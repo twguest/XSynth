@@ -1,0 +1,15 @@
+kickercontrol/__pycache__/__base__.cpython-39.pyc
+kickercontrol/__pycache__/__init__.cpython-39.pyc
+kickercontrol/__pycache__/device.cpython-39.pyc
+kickercontrol/__pycache__/signal.cpython-39.pyc
+kickercontrol/__pycache__/utils.cpython-39.pyc
+kickercontrol.egg-info/dependency_links.txt
+kickercontrol.egg-info/PKG-INFO
+kickercontrol.egg-info/requires.txt
+kickercontrol.egg-info/SOURCES.txt
+kickercontrol.egg-info/top_level.txt
+demo/*
+*.jpg
+*.jpeg
+*.png
+*.gif

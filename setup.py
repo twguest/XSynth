@@ -10,6 +10,7 @@ setup(
     install_requires=[
         'numpy',
         'xarray',
+        'numexpr',
         ],
     entry_points={
         'console_scripts': [],
