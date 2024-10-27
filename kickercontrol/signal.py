@@ -17,8 +17,23 @@ class SignalGenerator:
         oscillator (str): Type of signal to generate.
         kwargs: Additional arguments for each signal type.
         """
-        self.unit = unit
 
+        self.oscillators = {
+            'line': LineSignal,
+            'sin': SinSignal,
+            'cos': CosSignal,
+            'square': SquareSignal,
+            'triangle': TriangleSignal,
+            'ramp': RampSignal,
+            'gaussian': GaussianSignal,
+            'exponential_decay': ExponentialDecaySignal,
+            'step_with_decay': StepWithDecaySignal,
+            'spiral_cos': SpiralScanCosSignal,
+            'spiral_sin': SpiralScanSinSignal,
+            'custom': CustomExpressionSignal
+        }
+
+        self.unit = unit
         
         if self.unit == 'bunches':
             if not isinstance(self.t, int):
@@ -45,20 +60,6 @@ class SignalGenerator:
         oscillator (str): Type of signal to generate.
         kwargs: Additional arguments for each signal type.
         """
-        self.oscillators = {
-            'line': LineSignal,
-            'sin': SinSignal,
-            'cos': CosSignal,
-            'square': SquareSignal,
-            'triangle': TriangleSignal,
-            'ramp': RampSignal,
-            'gaussian': GaussianSignal,
-            'exponential_decay': ExponentialDecaySignal,
-            'step_with_decay': StepWithDecaySignal,
-            'spiral_cos': SpiralScanCosSignal,
-            'spiral_sin': SpiralScanSinSignal,
-            'custom': CustomExpressionSignal
-        }
 
         if oscillator not in self.oscillators:
             raise ValueError(f"Unsupported signal type. Choose from {list(self.oscillators.keys())}")
@@ -72,16 +73,13 @@ class SignalGenerator:
             self.oscillator = oscillator_class()
         
         self.variables = self.oscillator.get_variable_mapping()
-        
+        self.default_values = self.oscillator.default_values ### Note: variables should also be defined this way
         # Set default values if not provided in kwargs
-        for var in self.variables.keys():
-            if var == 'V0' and 'V0' not in kwargs:
-                kwargs[var] = self.t[0]  # Default to start of the time signal
-            elif var == 'V1' and 'V1' not in kwargs:
-                kwargs[var] = self.t[-1]  # Default to end of the time signal
-            elif var not in kwargs:
-                kwargs[var] = 1  # Default value for all other parameters is 1
+        for var in self.default_values.keys():
+            if var not in kwargs:
+                kwargs[var] = self.default_values[var]  # Default value for all other parameters is 1
         
+        print(kwargs)
         self.signal_params = kwargs
         self.update_signal()
 
