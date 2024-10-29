@@ -79,10 +79,10 @@ class SignalGenerator:
             if var not in kwargs:
                 kwargs[var] = self.default_values[var]  # Default value for all other parameters is 1
         
-        print(kwargs)
-        self.signal_params = kwargs
-        self.update_signal()
 
+        self.signal_params = kwargs
+
+        
     def generate_signal(self):
         """
         Generate the signal using the configured oscillator.
@@ -124,7 +124,7 @@ class SignalGenerator:
             self.update_signal()
 
 class DACSignalGenerator(SignalGenerator):
-    def __init__(self, kicker_device, oscillator = None):
+    def __init__(self, kicker_device, oscillator = None, **kwargs):
         """
         Initialize the DACSignalGenerator class, inheriting from SignalGenerator, for generating DAC signals.
         
@@ -133,7 +133,7 @@ class DACSignalGenerator(SignalGenerator):
         """
         self.kicker = kicker_device
 
-        super().__init__(kicker_device.t, unit='time', oscillator = oscillator)
+        super().__init__(kicker_device.t, unit='time', oscillator = oscillator, **kwargs)
     
     def write_dac_signal(self):
         """

@@ -60,6 +60,40 @@ class KickerDevice:
         """
         print(f"Exiting context for device: {self.device_location}")
 
+
+class KL2005(KickerDevice):
+
+    def __init__(self):
+        
+        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI2001TL.2/DAC_CH0.TD")
+
+
+class KMX1938(KickerDevice):
+
+    def __init__(self):
+        
+        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.3/DAC_CH0.TD")
+
+class KNY1938(KickerDevice):
+
+    def __init__(self):
+        
+        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.3/DAC_CH1.TD")
+
+class KMX1965(KickerDevice):
+
+    def __init__(self):
+        
+        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.4/DAC_CH0.TD")
+
+class KNY1965(KickerDevice):
+
+    def __init__(self):
+        
+        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.4/DAC_CH1.TD")
+
+
+
 if __name__ == "__main__":
     # Example usage with context management
     with KickerDevice("XFEL.DIAG/SIS8300DMA/DI1950TL.3/DAC_CH0.TD") as kicker:
