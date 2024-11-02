@@ -1,10 +1,11 @@
 import time
-
+import warnings
 from datetime import datetime
 import numpy as np
 
 from matplotlib import pyplot as plt
 from kickercontrol.utils import in_notebook
+from kickercontrol.timing import get_beam_regions
 from IPython.display import display, clear_output
 
 from scipy.spatial import cKDTree
@@ -26,7 +27,8 @@ class MiniScan:
             raise ValueError("At least one DACSignalGenerator is required.")
         if len(dac_generators) != len(scan_variables):
             raise ValueError("The number of DACSignalGenerators must match the number of variable names.")
-
+        
+        self.all_messages = all_messages
         self.dac_generators = dac_generators
         self.scan_variables = scan_variables
         self.scan_properties = scan_properties or {}
@@ -66,7 +68,7 @@ class MiniScan:
         
         for k, point in enumerate(self.scan_points):
             
-            
+
             S = [] ## Signal Container
 
             for i, dac_generator in enumerate(self.dac_generators):
@@ -80,37 +82,92 @@ class MiniScan:
 
                 if self.plot_display:
                     
+                    if self.all_messages:
+                        print("Setting Up Display")
+
+                    
                     if k == 0 and i == 0:
                 
                         assert in_notebook() == True, "Display is only possible in Jupyter Notebooks"
 
                         lines = []
-
+                        ins_lines = []
                         fig, ax = plt.subplots(figsize = (8,6))
-                        ax.set_ylim(-32767,32767)
+
+                        def plot_beam_regions(ax):
+
+                            regions, region_timing = get_beam_regions()
+                            for itr, r in enumerate(regions):
+
+                                if r == 'D':
+                                    color = 'grey'
+                                if r == '1':
+                                    color = 'blue'
+                                if r == '2':
+                                    color = 'orange'
+                                if r == '3':
+                                    color = 'green'
+                                if "13" in r:
+                                    color = 'magenta'
+                                
+                                try:
+
+                                    ax.axvspan(region_timing[itr], region_timing[itr+1], color = color, alpha = 0.2)
+
+                                except Exception as e:
+                                    break
+                            
+                            return regions, region_timing
+                        
+                        ins_ax = ax.inset_axes([.55, .65, 0.4, 0.3])
+                        ins_ax.patch.set_alpha(0.5)
+
+                        for a in [ax, ins_ax]:
+                            
+                            regions, region_timing = plot_beam_regions(a)
+                            
+                            a.set_xlabel("Time (us)")
+                            
+                        ins_ax.set_ylim(-32767,32767)
+                        ins_ax.set_yticks([-32767,32767])
+                        
+                        ins_ax.set_xlim(700, region_timing[-1]+75)
+        
+                        ax.set_xlim(dac_generator.signal_params["V0"]-75,
+                                    dac_generator.signal_params["V1"]+75)                        
+
                         ax.set_ylabel("DAC Signal (16-bit Signed Integer)")
-                        ax.set_xlabel("Time (ms)")
+
+                        
                         tax = ax.twinx()
-                        tax.set_xlim(0,np.max(time_vector))
+                        
                         tax.set_ylabel("DAC Signal (Volts.)")
-    
+
+                        vmax = 0.25 ### horrible hard coded voltage max for main display
+                        ax.set_ylim(-32767*vmax, 32767*vmax)
+                        tax.set_ylim(-vmax, vmax)
+
                         for dac_generator in self.dac_generators:
-                            l, = ax.plot(time_vector, dac_generator.generated_signal, label = dac_generator)
+                            k, = ins_ax.plot(time_vector, dac_generator.generated_signal)
+                            l, = ax.plot(time_vector, dac_generator.generated_signal, label = dac_generator.kicker.__name__)
+                            ins_lines.append(k)     
                             lines.append(l)
-                                                
+                            ins_lines.append(k)     
                         display(fig)
                 
                     lines[i].set_ydata(dac_generator.generated_signal)
+                    ins_lines[i].set_ydata(dac_generator.generated_signal)
                     clear_output(wait=True)
-                    ax.legend()
+                    ax.legend(loc = 'lower right')
                     display(fig)
 
                 if write_dac:
                     dac_generator.write_dac_signal()
             
+
             # Sleep for the specified amount of time between each scan point
             time.sleep(self.wait_time)
-            
+
             t_update = datetime.now()
             
             self.timestamps.append(t_update-t_start)
@@ -191,4 +248,15 @@ class MeshScan(MiniScan):
         return np.vstack([m.flatten() for m in mesh]).T
 
 
-
+if __name__ == '__main__':
+    
+    scan_output = Scan([KL2005],
+            scan_vectors=[np.arange(25)/25],
+            oscillator = 'sin',
+            oscillator_variables={"V2": 0},
+            scan_variables=["V3"],
+            write_dac = False,
+            all_messages=False,
+            display = True,
+            beamline = '2',
+            wait_time=0.1)

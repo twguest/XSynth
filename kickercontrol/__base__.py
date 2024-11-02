@@ -56,6 +56,7 @@ class BaseSignal:
     @property
     def V1(self):
         return get_bunch_pattern()
+    
 class LineSignal(BaseSignal):
     """
     Generates a constant line signal within a specified time domain.

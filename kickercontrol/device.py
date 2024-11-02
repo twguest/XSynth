@@ -34,6 +34,10 @@ class KickerDevice:
             print(f"Failed to write DAC: {e}")
 
     @property
+    def __name__(self):
+        return ""
+
+    @property
     def get_signal_interval(self):
         """
         Return the signal length for the kicker
@@ -70,6 +74,9 @@ class KL2005(KickerDevice):
         
         super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI2001TL.2/DAC_CH0.TD")
 
+    @property
+    def __name__(self):
+        return "KL2005"
 
 class KMX1938(KickerDevice):
 
@@ -77,25 +84,39 @@ class KMX1938(KickerDevice):
         
         super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.3/DAC_CH0.TD")
 
+    @property
+    def __name__(self):
+        return "KMX1938"
+
 class KNY1938(KickerDevice):
 
     def __init__(self):
         
         super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.3/DAC_CH1.TD")
 
+    @property
+    def __name__(self):
+        return "KNY1938"
+    
 class KMX1965(KickerDevice):
 
     def __init__(self):
         
         super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.4/DAC_CH0.TD")
 
+    @property
+    def __name__(self):
+        return "KMX1965"
+    
 class KNY1965(KickerDevice):
 
     def __init__(self):
         
         super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI1950TL.4/DAC_CH1.TD")
 
-
+    @property
+    def __name__(self):
+        return "KNY1965"
 
 if __name__ == "__main__":
     # Example usage with context management
