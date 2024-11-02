@@ -10,7 +10,7 @@ the signal.
 
 To add a new signal class:
 1. Create a subclass that inherits from BaseSignal.
-2. Define the variables used by the signal, following the dictionary format in `self.variables`.
+2. Define the variables used by the signal, followiWng the dictionary format in `self.variables`.
 3. Implement the `generate()` method to produce the desired signal using input parameters.
 4. Update the dict self.oscillators in the __init__ of singal.SignalGenerator
 5. Optionally `get_latex_expression()` to return a LaTeX representation of the signal equation.
@@ -25,6 +25,7 @@ import numpy as np
 from scipy import signal
 from scipy import special
 
+from kickercontrol.timing import get_bunch_pattern
 class BaseSignal:
     """
     Base class for all signal types. Provides methods to get variable mapping,
@@ -51,7 +52,10 @@ class BaseSignal:
         Returns the LaTeX representation of the signal.
         """
         return ""
-
+    
+    @property
+    def V1(self):
+        return get_bunch_pattern()
 class LineSignal(BaseSignal):
     """
     Generates a constant line signal within a specified time domain.
@@ -59,7 +63,7 @@ class LineSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0}
 
     def generate(self, t, V0, V1, V2):
         """
@@ -96,7 +100,7 @@ class CosSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 1/405}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1/405}
 
     def generate(self, t, V0, V1, V2, V3, V4):
         """
@@ -115,7 +119,7 @@ class SquareSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "duty"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 1, "V5": 0.5}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1, "V5": 0.5}
 
     def generate(self, t, V0, V1, V2, V3, V4, V5):
         """
@@ -134,7 +138,7 @@ class TriangleSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1}
 
     def generate(self, t, V0, V1, V2, V3, V4):
         """
@@ -153,7 +157,7 @@ class RampSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0}
 
     def generate(self, t, V0, V1, V2):
         """
@@ -172,7 +176,7 @@ class GaussianSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "mean", "V5": "std_dev"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 1000, "V5": 1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1000, "V5": 1}
 
     def generate(self, t, V0, V1, V2, V3, V4, V5):
         """
@@ -191,7 +195,7 @@ class ExponentialDecaySignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "decay_rate"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 0.5}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 0.5}
 
     def generate(self, t, V0, V1, V2, V3, V4):
         """
@@ -250,7 +254,7 @@ class SpiralScanSinSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "radius_growth_rate"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 0.002, "V5": 0.1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 0.002, "V5": 0.1}
 
     def generate(self, t, V0, V1, V2, V3, V4, V5):
         """
@@ -270,7 +274,7 @@ class CustomExpressionSignal(BaseSignal):
         super().__init__()
         self.expression = expression
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "custom_param1", "V4": "custom_param2"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1}
 
     def generate(self, t, **kwargs):
         """

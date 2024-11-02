@@ -1,12 +1,11 @@
 import time
 
+from datetime import datetime
 import numpy as np
 
 from matplotlib import pyplot as plt
 from kickercontrol.utils import in_notebook
 from IPython.display import display, clear_output
-
-
 
 from scipy.spatial import cKDTree
 
@@ -35,6 +34,7 @@ class MiniScan:
         self.plot_display = plot_display
    
 
+
     def generate_scan_points(self):
         """
         Generate the scan points based on the specific scan type and properties.
@@ -49,57 +49,75 @@ class MiniScan:
         """
         if self.scan_points is None:
             raise RuntimeError("Scan points have not been generated. Call 'generate_scan_points' first.")
-
-
-            
-        plotted_signal = []
+        
+        
+        self.timestamps = []
+        self.signals = []
 
         ### initialise signal gen
         for i, dac_generator in enumerate(self.dac_generators):
             init_point = self.scan_points[0]
             variable_name = self.scan_variables[i]
             dac_generator.update_variable(**{variable_name: init_point[i]})
-
+        
+        time_vector = dac_generator.t
+        
+        t_start = datetime.now()
+        
         for k, point in enumerate(self.scan_points):
+            
+            
+            S = [] ## Signal Container
+
             for i, dac_generator in enumerate(self.dac_generators):
+                
                 
                 # Update signal parameter for each DAC generator based on the scan point
                 variable_name = self.scan_variables[i]
                 dac_generator.update_variable(**{variable_name: point[i]})
 
+                S.append(dac_generator.generated_signal)
+
                 if self.plot_display:
                     
-                    if k == 0:
+                    if k == 0 and i == 0:
                 
                         assert in_notebook() == True, "Display is only possible in Jupyter Notebooks"
 
                         lines = []
 
-                        fig, ax = plt.subplots()
-                        ax.set_ylim(-1,1)
-
+                        fig, ax = plt.subplots(figsize = (8,6))
+                        ax.set_ylim(-32767,32767)
+                        ax.set_ylabel("DAC Signal (16-bit Signed Integer)")
+                        ax.set_xlabel("Time (ms)")
+                        tax = ax.twinx()
+                        tax.set_xlim(0,np.max(time_vector))
+                        tax.set_ylabel("DAC Signal (Volts.)")
+    
                         for dac_generator in self.dac_generators:
-                            l, = ax.plot(dac_generator.t, dac_generator.generated_signal)
+                            l, = ax.plot(time_vector, dac_generator.generated_signal, label = dac_generator)
                             lines.append(l)
-                        
+                                                
                         display(fig)
                 
-                    lines[i].set_ydata(dac_generator.generated_signal.values)
+                    lines[i].set_ydata(dac_generator.generated_signal)
                     clear_output(wait=True)
+                    ax.legend()
                     display(fig)
-
-
-
 
                 if write_dac:
                     dac_generator.write_dac_signal()
-
+            
             # Sleep for the specified amount of time between each scan point
             time.sleep(self.wait_time)
-        
+            
+            t_update = datetime.now()
+            
+            self.timestamps.append(t_update-t_start)
+            self.signals.append(S)
+
         if self.plot_display:
             clear_output(wait=True)
-
 
     @property
     def scan_points(self):

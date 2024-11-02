@@ -1,9 +1,14 @@
+import warnings
+
 import numpy as np
 import xarray as xr
+
 from kickercontrol.__base__ import (
     LineSignal, SinSignal, CosSignal, SquareSignal, TriangleSignal, RampSignal,
     GaussianSignal, ExponentialDecaySignal, StepWithDecaySignal, SpiralScanCosSignal, SpiralScanSinSignal, CustomExpressionSignal
 )
+from kickercontrol.utils import float_to_16bit_int
+from kickercontrol.timing import get_region_bounds
 
 class SignalGenerator:
     def __init__(self, t, unit='bunches', dt=None, oscillator=None, **kwargs):
@@ -75,14 +80,13 @@ class SignalGenerator:
         self.variables = self.oscillator.get_variable_mapping()
         self.default_values = self.oscillator.default_values ### Note: variables should also be defined this way
         # Set default values if not provided in kwargs
+
         for var in self.default_values.keys():
             if var not in kwargs:
                 kwargs[var] = self.default_values[var]  # Default value for all other parameters is 1
-        
 
         self.signal_params = kwargs
 
-        
     def generate_signal(self):
         """
         Generate the signal using the configured oscillator.
@@ -124,17 +128,53 @@ class SignalGenerator:
             self.update_signal()
 
 class DACSignalGenerator(SignalGenerator):
-    def __init__(self, kicker_device, oscillator = None, **kwargs):
+
+    def __init__(self, kicker_device, beamline = None, oscillator = None, **kwargs):
         """
         Initialize the DACSignalGenerator class, inheriting from SignalGenerator, for generating DAC signals.
         
         Parameters:
         kicker (KickerControl): Instance of a KickerControl class to write the generated signals. The kicker will provide time interval and signal duration.
+        beamline: Specification of SASE beamline ["D", "1", "2", "3", "13", "4"]
         """
+        beamlines = [None, "D", "1", "2", "3", "13", "4"]
+        assert beamline in beamlines, f"Specified Beamline does not exist. beamline should be in {beamlines}"
+
+        self.beamline = beamline
+
+        assert type(kicker_device) != type, "Instantiate the kicker device (e.g., KickerDevice() ) before passing to DACSignalGenerator"
         self.kicker = kicker_device
 
         super().__init__(kicker_device.t, unit='time', oscillator = oscillator, **kwargs)
-    
+
+    def generate_signal(self):
+        """
+        Generate the signal using the configured oscillator.
+        
+        Returns:
+        xarray.DataArray: Generated signal values.
+        """
+        if self.oscillator is None:
+            raise RuntimeError("Oscillator has not been set. Use 'set_oscillator' to define the signal type.")
+        
+        if self.beamline is not None:
+            ti, tf = get_region_bounds(self.beamline)
+
+        ### hard limit for which beam regions can be written
+
+        if self.beamline is not None:
+            if self.signal_params["V0"] < ti:
+                warnings.warn(f"Cannot write before beam region {self.beamline} starting @ {ti} us", UserWarning)
+                self.signal_params["V0"] = ti
+            if self.signal_params["V1"] > tf:
+                warnings.warn(f"Cannot write after beam region {self.beamline} ending @ {tf} us", UserWarning)
+                self.signal_params["V1"] = tf
+
+        signal_values = float_to_16bit_int(self.oscillator.generate(self.t, **self.signal_params))
+
+        return xr.DataArray(signal_values, dims=['time'], coords={'time': self.t}, attrs={'unit': 'us'})
+
+
     def write_dac_signal(self):
         """
         Generate a specified type of signal and write it to the DAC device via the kicker.
@@ -150,9 +190,12 @@ class DACSignalGenerator(SignalGenerator):
             raise ValueError("A kicker must be specified to write DAC signal.")
 
         signal_data = self.generated_signal
+
         # Here you would write the signal data to the DAC device through the kicker
         # This is a placeholder for the actual writing logic
         print(f"Writing signal to kicker {self.kicker.device_location}...")
-        
-        self.kicker.write_dac(signal_data.values)
-        
+        try:
+            self.kicker.write_dac(signal_data.values)
+        except Exception as e:
+            print("Could not write to device")
+            print(e)
