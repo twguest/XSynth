@@ -25,7 +25,7 @@ class KickerDevice:
         pulse_values (numpy.ndarray): The pulse values to write to the DAC.
         """
 
-        assert np.max(abs(pulse_values.tolist)) <= 32767, "Kicker Strengths must be in the domain (-32767, 32767)"
+        assert np.max(abs(pulse_values)) <= 32767, "Kicker Strengths must be in the domain (-32767, 32767)"
         
         try:
             pydoocs.write(self.device_location, pulse_values.tolist())

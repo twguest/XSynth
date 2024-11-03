@@ -53,6 +53,7 @@ class BaseSignal:
         """
         return ""
     
+
     @property
     def V1(self):
         return get_bunch_pattern()
@@ -81,14 +82,15 @@ class SinSignal(BaseSignal):
     """
     def __init__(self):
         super().__init__()
-        self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 1/405}
+        self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "phase"}
+        self.default_values = {"V0": 795, "V1": 1200, "V2":  0, "V3": 1, "V4": 1/405, "V5": 0}
 
-    def generate(self, t, V0, V1, V2, V3, V4):
+
+    def generate(self, t, V0, V1, V2, V3, V4, V5):
         """
         Generates a sinusoidal signal within the specified domain.
         """
-        signal_values = V3 * np.sin(2 * np.pi * V4 * t) + V2
+        signal_values = V3 * np.sin(2 * np.pi * V4 * -(V0-t)-V5*t) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -100,14 +102,14 @@ class CosSignal(BaseSignal):
     """
     def __init__(self):
         super().__init__()
-        self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1/405}
+        self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "phase"}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1/405, "V5": 0}
 
-    def generate(self, t, V0, V1, V2, V3, V4):
+    def generate(self, t, V0, V1, V2, V3, V4,V5):
         """
         Generates a cosine signal within the specified domain.
         """
-        signal_values = V3 * np.cos(2 * np.pi * V4 * t) + V2
+        signal_values = V3 * np.cos(2 * np.pi * V4 * -(V0-t)-V5*t) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -215,7 +217,7 @@ class StepWithDecaySignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "step_time", "V5": "decay_rate"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 2, "V5": 0.5}
+        self.default_values = {"V0": 795, "V1": 1200, "V2":  0, "V3": 1, "V4": 2, "V5": 0.5}
 
     def generate(self, t, V0, V1, V2, V3, V4, V5):
         """
@@ -236,7 +238,7 @@ class SpiralScanCosSignal(BaseSignal):
     def __init__(self):
         super().__init__()
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "radius_growth_rate"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": -1, "V3": 1, "V4": 0.2, "V5": 0.1}
+        self.default_values = {"V0": 795, "V1": 1200, "V2":  0, "V3": 1, "V4": 0.2, "V5": 0.1}
 
     def generate(self, t, V0, V1, V2, V3, V4, V5):
         """

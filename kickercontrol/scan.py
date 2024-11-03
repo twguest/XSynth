@@ -2,7 +2,7 @@ import time
 import warnings
 from datetime import datetime
 import numpy as np
-
+from copy import copy
 from matplotlib import pyplot as plt
 from kickercontrol.utils import in_notebook
 from kickercontrol.timing import get_beam_regions
@@ -61,8 +61,7 @@ class MiniScan:
             init_point = self.scan_points[0]
             variable_name = self.scan_variables[i]
             dac_generator.update_variable(**{variable_name: init_point[i]})
-        
-        time_vector = dac_generator.t
+
         
         t_start = datetime.now()
         
@@ -81,17 +80,17 @@ class MiniScan:
                 S.append(dac_generator.generated_signal)
 
                 if self.plot_display:
-                    
-                    if self.all_messages:
-                        print("Setting Up Display")
 
-                    
                     if k == 0 and i == 0:
-                
+
+                        if self.all_messages:
+                            print("Setting Up Display")
+
                         assert in_notebook() == True, "Display is only possible in Jupyter Notebooks"
 
-                        lines = []
-                        ins_lines = []
+                        lines = {}
+                        ins_lines = {}
+
                         fig, ax = plt.subplots(figsize = (8,6))
 
                         def plot_beam_regions(ax):
@@ -147,23 +146,33 @@ class MiniScan:
                         ax.set_ylim(-32767*vmax, 32767*vmax)
                         tax.set_ylim(-vmax, vmax)
 
-                        for dac_generator in self.dac_generators:
-                            k, = ins_ax.plot(time_vector, dac_generator.generated_signal)
-                            l, = ax.plot(time_vector, dac_generator.generated_signal, label = dac_generator.kicker.__name__)
-                            ins_lines.append(k)     
-                            lines.append(l)
-                            ins_lines.append(k)     
-                        display(fig)
-                
+                        ### init plot
+                        for itr, dac_generator in enumerate(self.dac_generators):
+                            ins_lines[str(itr)], = ins_ax.plot(dac_generator.t, dac_generator.generated_signal)
+                            lines[str(itr)], = ax.plot(dac_generator.t, dac_generator.generated_signal, label = dac_generator.kicker.__name__)
+
+                            clear_output(wait=True)
+                            display(fig)
+
+                        lines = [lines[str(itr)] for itr in range(len(self.dac_generators))]
+                        print(lines)
+                        ins_lines = [ins_lines[str(itr)] for itr in range(len(self.dac_generators))]    
+                        ax.legend(loc = 'lower right')
+                    
                     lines[i].set_ydata(dac_generator.generated_signal)
                     ins_lines[i].set_ydata(dac_generator.generated_signal)
+                    
+                    
                     clear_output(wait=True)
-                    ax.legend(loc = 'lower right')
                     display(fig)
-
+                    
+                        
                 if write_dac:
-                    dac_generator.write_dac_signal()
-            
+                    try:
+                        dac_generator.write_dac_signal()
+                    except Exception as e:
+                        print(e)
+                        break
 
             # Sleep for the specified amount of time between each scan point
             time.sleep(self.wait_time)

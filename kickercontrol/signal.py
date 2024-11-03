@@ -23,7 +23,7 @@ class SignalGenerator:
         kwargs: Additional arguments for each signal type.
         """
 
-        self.oscillators = {
+        self.__base__ = {
             'line': LineSignal,
             'sin': SinSignal,
             'cos': CosSignal,
@@ -66,10 +66,10 @@ class SignalGenerator:
         kwargs: Additional arguments for each signal type.
         """
 
-        if oscillator not in self.oscillators:
-            raise ValueError(f"Unsupported signal type. Choose from {list(self.oscillators.keys())}")
+        if oscillator not in self.__base__:
+            raise ValueError(f"Unsupported signal type. Choose from {list(self.__base__.keys())}")
 
-        oscillator_class = self.oscillators[oscillator]
+        oscillator_class = self.__base__[oscillator]
         if oscillator == 'custom':
             if 'expression' not in kwargs:
                 raise ValueError("For custom signal, 'expression' parameter must be provided")
@@ -128,14 +128,47 @@ class SignalGenerator:
             self.update_signal()
 
 class DACSignalGenerator(SignalGenerator):
+    """
+    DACSignalGenerator
+
+    A subclass of SignalGenerator for generating and writing signals to a DAC (Digital to Analog Converter) 
+    device through a kicker control. This class specifically integrates with beamlines and kickers to generate 
+    signals suitable for controlling devices in an accelerator or similar environment.
+
+    Attributes:
+    -----------
+    kicker : KickerControl
+        An instance of the KickerControl class that controls the DAC device.Provides time interval and signal duration.
+    beamline : str or None
+        The identifier of the beamline to target for signal generation. Allowed values are: [None, "D", "1", "2", "3", "13", "4"].
+    
+    Methods:
+    --------
+    __init__(self, kicker_device, beamline=None, oscillator=None, **kwargs)
+        Initializes the DACSignalGenerator object. Sets up kicker and beamline, and initializes the base SignalGenerator.
+        
+    generate_signal(self)
+        Generates the DAC-compatible signal based on the set oscillator and signal parameters. Ensures that the signal is 
+        within the specified beamline bounds.
+        
+    write_dac_signal(self)
+        Writes the generated signal to the DAC device via the kicker.
+    """
 
     def __init__(self, kicker_device, beamline = None, oscillator = None, **kwargs):
         """
         Initialize the DACSignalGenerator class, inheriting from SignalGenerator, for generating DAC signals.
         
         Parameters:
-        kicker (KickerControl): Instance of a KickerControl class to write the generated signals. The kicker will provide time interval and signal duration.
-        beamline: Specification of SASE beamline ["D", "1", "2", "3", "13", "4"]
+        ----------
+        kicker_device (KickerControl): 
+            Instance of a KickerControl class to write the generated signals. The kicker provides time interval and signal duration.
+        beamline (str, optional): 
+            Specification of SASE beamline. Allowed values are: [None, "D", "1", "2", "3", "13", "4"].
+        oscillator (str, optional): 
+            Type of signal to generate. Must be one of the supported signal types defined in the SignalGenerator.
+        kwargs: 
+            Additional arguments for each signal type, e.g., amplitude or frequency.
         """
         beamlines = [None, "D", "1", "2", "3", "13", "4"]
         assert beamline in beamlines, f"Specified Beamline does not exist. beamline should be in {beamlines}"
@@ -157,12 +190,11 @@ class DACSignalGenerator(SignalGenerator):
         if self.oscillator is None:
             raise RuntimeError("Oscillator has not been set. Use 'set_oscillator' to define the signal type.")
         
-        if self.beamline is not None:
-            ti, tf = get_region_bounds(self.beamline)
-
         ### hard limit for which beam regions can be written
 
         if self.beamline is not None:
+            ti, tf = get_region_bounds(self.beamline)
+
             if self.signal_params["V0"] < ti:
                 warnings.warn(f"Cannot write before beam region {self.beamline} starting @ {ti} us", UserWarning)
                 self.signal_params["V0"] = ti
