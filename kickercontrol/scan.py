@@ -1,5 +1,7 @@
 import time
 import warnings
+
+from tqdm import tqdm
 from datetime import datetime
 import numpy as np
 from copy import copy
@@ -62,12 +64,13 @@ class MiniScan:
             variable_name = self.scan_variables[i]
             dac_generator.update_variable(**{variable_name: init_point[i]})
 
+        n_scan_points = len(self.scan_points)
         
         t_start = datetime.now()
         
-        for k, point in enumerate(self.scan_points):
+        for k, point in tqdm(enumerate(self.scan_points)):
             
-
+            
             S = [] ## Signal Container
 
             for i, dac_generator in enumerate(self.dac_generators):
@@ -165,17 +168,24 @@ class MiniScan:
                     
                     clear_output(wait=True)
                     display(fig)
-                    
-                        
+
+                if i == len(self.dac_generators)-1:    
+                    itr_start = datetime.now()
                 if write_dac:
                     try:
                         dac_generator.write_dac_signal()
                     except Exception as e:
                         print(e)
                         break
-
+            
+            itr_end = datetime.now()
+            itr_delta = (itr_end-itr_start).seconds
             # Sleep for the specified amount of time between each scan point
-            time.sleep(self.wait_time)
+            try:
+                time.sleep(self.wait_time-itr_delta-1) ## not sure why -1
+            except ValueError:
+                break
+
 
             t_update = datetime.now()
             

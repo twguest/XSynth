@@ -67,11 +67,11 @@ class LineSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0}
 
-    def generate(self, t, V0, V1, V2):
+    def generate(self, t, V0, V1, V2,**kwargs):
         """
         Generates a line signal that is active between V0 and V1 and equal to V2 otherwise.
         """
-        return np.where((t >= V0) & (t <= V1), V2, V2)
+        return np.where((t >= V0) & (t <= V1), V2, 0)
 
     def get_latex_expression(self):
         return "V_2 \\text{ for } t \\in [V_0, V_1]"
@@ -86,7 +86,7 @@ class SinSignal(BaseSignal):
         self.default_values = {"V0": 795, "V1": 1200, "V2":  0, "V3": 1, "V4": 1/405, "V5": 0}
 
 
-    def generate(self, t, V0, V1, V2, V3, V4, V5):
+    def generate(self, t, V0, V1, V2, V3, V4, V5,**kwargs):
         """
         Generates a sinusoidal signal within the specified domain.
         """
@@ -105,7 +105,7 @@ class CosSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "phase"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1/405, "V5": 0}
 
-    def generate(self, t, V0, V1, V2, V3, V4,V5):
+    def generate(self, t, V0, V1, V2, V3, V4,V5,**kwargs):
         """
         Generates a cosine signal within the specified domain.
         """
@@ -124,7 +124,7 @@ class SquareSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "duty"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1, "V5": 0.5}
 
-    def generate(self, t, V0, V1, V2, V3, V4, V5):
+    def generate(self, t, V0, V1, V2, V3, V4, V5,**kwargs):
         """
         Generates a square wave signal within the specified domain.
         """
@@ -143,7 +143,7 @@ class TriangleSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1}
 
-    def generate(self, t, V0, V1, V2, V3, V4):
+    def generate(self, t, V0, V1, V2, V3, V4,**kwargs):
         """
         Generates a triangle wave signal within the specified domain.
         """
@@ -162,7 +162,7 @@ class RampSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0}
 
-    def generate(self, t, V0, V1, V2):
+    def generate(self, t, V0, V1, V2,**kwargs):
         """
         Generates a ramp signal within the specified domain.
         """
@@ -181,7 +181,7 @@ class GaussianSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "mean", "V5": "std_dev"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 1000, "V5": 1}
 
-    def generate(self, t, V0, V1, V2, V3, V4, V5):
+    def generate(self, t, V0, V1, V2, V3, V4, V5,**kwargs):
         """
         Generates a Gaussian signal within the specified domain.
         """
@@ -200,7 +200,7 @@ class ExponentialDecaySignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "decay_rate"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 0.5}
 
-    def generate(self, t, V0, V1, V2, V3, V4):
+    def generate(self, t, V0, V1, V2, V3, V4,**kwargs):
         """
         Generates an exponentially decaying signal within the specified domain.
         """
@@ -219,7 +219,7 @@ class StepWithDecaySignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "step_time", "V5": "decay_rate"}
         self.default_values = {"V0": 795, "V1": 1200, "V2":  0, "V3": 1, "V4": 2, "V5": 0.5}
 
-    def generate(self, t, V0, V1, V2, V3, V4, V5):
+    def generate(self, t, V0, V1, V2, V3, V4, V5,**kwargs):
         """
         Generates a step function with exponential decay within the specified domain.
         """
@@ -240,7 +240,7 @@ class SpiralScanCosSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "radius_growth_rate"}
         self.default_values = {"V0": 795, "V1": 1200, "V2":  0, "V3": 1, "V4": 0.2, "V5": 0.1}
 
-    def generate(self, t, V0, V1, V2, V3, V4, V5):
+    def generate(self, t, V0, V1, V2, V3, V4, V5,**kwargs):
         """
         Generates the cosine component of a spiral scan within the specified domain.
         """
@@ -259,7 +259,7 @@ class SpiralScanSinSignal(BaseSignal):
         self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "amplitude", "V4": "frequency", "V5": "radius_growth_rate"}
         self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 1, "V4": 0.002, "V5": 0.1}
 
-    def generate(self, t, V0, V1, V2, V3, V4, V5):
+    def generate(self, t, V0, V1, V2, V3, V4, V5,**kwargs):
         """
         Generates the sine component of a spiral scan within the specified domain.
         """
