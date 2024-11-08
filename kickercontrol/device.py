@@ -12,21 +12,26 @@ class KickerDevice:
         device_location (str): The full path of the kicker device to control, including channel.
         """
         self.device_location = device_location
-        self.t = pydoocs.read(self.device_location)['data'][:,0]
+        self.t, self.initial_signal = pydoocs.read(self.device_location)['data'].T
+        
 
     def read_dac(self):
         return pydoocs.read(self.device_location)['data']
 
-    def write_dac(self, pulse_values):
+    def write_dac(self, pulse_values, relative_scan = False):
         """
         Write the DAC values using a vector with time intervals.
         
         Parameters:
         pulse_values (numpy.ndarray): The pulse values to write to the DAC.
+        read (Bool): Scan relative to the intial signla
         """
-
+        
+        ### may not strictly be true
         assert np.max(abs(pulse_values)) <= 32767, "Kicker Strengths must be in the domain (-32767, 32767)"
         
+        if absolute:
+            pulse_values+=self.initial_signal
         try:
             pydoocs.write(self.device_location, pulse_values.tolist())
             print("Succesful Write")

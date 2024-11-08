@@ -12,6 +12,7 @@ def Scan(kicker_devices,
               all_messages = True,
               display = False,
               beamline = None,
+              relative_scan = False,
                 **kwargs):
             """
             Conducts a scanning routine for the specified kicker devices using a mesh scan.
@@ -85,6 +86,7 @@ def Scan(kicker_devices,
                 dac_generators.append(DACSignalGenerator(kicker(),
                                                         oscillator = os,
                                                         beamline = beamline,
+                                                        relative_scan=relative_scan,
                                                         **ov))
             
             
@@ -156,3 +158,25 @@ def SignalGenerator(kicker_devices,
                 beamline = beamline,
                 wait_time= wait_time,
                 *kwargs)
+
+def MacroScan(kicker_devices,
+              scan_vectors,
+              write_dac = False,
+              all_messages = False,
+              display = False,
+              beamline = None,
+              wait_time = 1):
+    
+    N = len(kicker_devices)
+    scan_output = Scan(kicker_devices,
+              scan_vectors = scan_vectors,
+              oscillators = ['line' for n in range(N)],
+              scan_variables=["V2" for n in range(N)],
+              oscillator_variables=[{} for n in range(N)],
+              write_dac = write_dac,
+              display = display,
+              all_messages=all_messages,
+              beamline = beamline,
+              wait_time = wait_time)
+    
+    return scan_output

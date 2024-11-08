@@ -11,6 +11,8 @@ setup(
         'numpy',
         'xarray',
         'numexpr',
+        'tqdm',
+        'IPython'
         ],
     entry_points={
         'console_scripts': [],

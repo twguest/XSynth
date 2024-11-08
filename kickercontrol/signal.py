@@ -11,7 +11,7 @@ from kickercontrol.utils import float_to_16bit_int
 from kickercontrol.timing import get_region_bounds
 
 class SignalGenerator:
-    def __init__(self, t, unit='bunches', dt=None, oscillator=None, **kwargs):
+    def __init__(self, t, unit='bunches', dt=None, oscillator=None, relative_scan = False, **kwargs):
         """
         Initialize the SignalGenerator class to create arbitrary signals.
         
@@ -53,6 +53,7 @@ class SignalGenerator:
         self.variables = None
         self.signal_params = None
         self.generated_signal = None
+        self.relative_scan = relative_scan
 
         if oscillator is not None:
             self.set_oscillator(oscillator, **kwargs)
@@ -204,6 +205,11 @@ class DACSignalGenerator(SignalGenerator):
 
         signal_values = float_to_16bit_int(self.oscillator.generate(self.t, **self.signal_params))
 
+        if self.beamline is not None:
+            time, current_signal = self.kicker.read_dac().T
+            signal_values[time < ti] = current_signal[time < ti]
+            signal_values[time > tf] = current_signal[time > tf]
+        
         return xr.DataArray(signal_values, dims=['time'], coords={'time': self.t}, attrs={'unit': 'us'})
 
 
@@ -227,7 +233,7 @@ class DACSignalGenerator(SignalGenerator):
         # This is a placeholder for the actual writing logic
         print(f"Writing signal to kicker {self.kicker.device_location}...")
         try:
-            self.kicker.write_dac(signal_data.values)
+            self.kicker.write_dac(signal_data.values, self.relative_scan)
         except Exception as e:
             print("Could not write to device")
             print(e)

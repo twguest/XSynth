@@ -64,7 +64,7 @@ class MiniScan:
             variable_name = self.scan_variables[i]
             dac_generator.update_variable(**{variable_name: init_point[i]})
 
-        n_scan_points = len(self.scan_points)
+        print(f"# Scan Points: {len(self.scan_points)}")
         
         t_start = datetime.now()
         
