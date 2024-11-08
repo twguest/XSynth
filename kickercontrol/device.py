@@ -30,7 +30,7 @@ class KickerDevice:
         ### may not strictly be true
         assert np.max(abs(pulse_values)) <= 32767, "Kicker Strengths must be in the domain (-32767, 32767)"
         
-        if absolute:
+        if relative_scan:
             pulse_values+=self.initial_signal
         try:
             pydoocs.write(self.device_location, pulse_values.tolist())

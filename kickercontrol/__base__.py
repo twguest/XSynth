@@ -159,14 +159,16 @@ class RampSignal(BaseSignal):
     """
     def __init__(self):
         super().__init__()
-        self.variables = {"V0": "start", "V1": "end", "V2": "offset"}
-        self.default_values = {"V0": 795, "V1": 1200, "V2": 0}
+        self.variables = {"V0": "start", "V1": "end", "V2": "offset", "V3": "start_value","V4": "end_value"}
+        self.default_values = {"V0": 795, "V1": 1200, "V2": 0, "V3": 0, "V4": 1}
 
-    def generate(self, t, V0, V1, V2,**kwargs):
+    def generate(self, t, V0, V1, V2, V3, V4, **kwargs):
         """
         Generates a ramp signal within the specified domain.
         """
-        ramp_signal = np.linspace(V2, V2 + (V1 - V0), len(t))
+        ind_min = np.argmin(t-V0)
+        ind_max = np.argmin(t-V1)
+        ramp_signal = np.linspace(V3, V4, ind_max-ind_min)
         return np.where((t >= V0) & (t <= V1), ramp_signal, V2)
 
     def get_latex_expression(self):

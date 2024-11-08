@@ -13,6 +13,7 @@ def Scan(kicker_devices,
               display = False,
               beamline = None,
               relative_scan = False,
+              restore = True,
                 **kwargs):
             """
             Conducts a scanning routine for the specified kicker devices using a mesh scan.
@@ -99,13 +100,19 @@ def Scan(kicker_devices,
             """"""
             M.execute_scan(write_dac)
 
+            #M['initial_kicker_conditions'] = initial_kicker_conditions
 
-            if write_dac:
+            if restore:
+
+                try:
+                     
+                    for itr, kicker in enumerate(kicker_devices):
+                        print(initial_kicker_conditions[itr])
+                        kicker.write_dac(pulse_values = initial_kicker_conditions[itr])
+                except Exception:
+                     print("Unable to Restore Initial Kicker Conditions")
 
 
-                for itr, kicker in kicker_devices:
-
-                    kicker.write_dac(initial_kicker_conditions[itr])
             return M
 
 
@@ -116,6 +123,7 @@ def SignalGenerator(kicker_devices,
               write_dac = False,
               all_messages = True,
               beamline = '2',
+              display = display,
                 **kwargs):
     """
     Wrapper function for `Scan` to initialize a signal generator configuration.
@@ -147,17 +155,20 @@ def SignalGenerator(kicker_devices,
     ```
     """
     
-    return Scan(kicker_devices,
+    return Scan(kicker_devices=kicker_devices,
                 scan_vectors=[None for k in kicker_devices],
                 oscillators = oscillators,
                 oscillator_variables=oscillator_variables,
                 scan_variables=["V7" for k in kicker_devices],
                 write_dac = write_dac,
                 all_messages = all_messages,
-                display = False,
+                display = display,
                 beamline = beamline,
                 wait_time= wait_time,
-                *kwargs)
+                **kwargs)
+
+
+
 
 def MacroScan(kicker_devices,
               scan_vectors,
@@ -180,3 +191,71 @@ def MacroScan(kicker_devices,
               wait_time = wait_time)
     
     return scan_output
+
+
+def SetKicker(kicker_device,
+              value,
+              beamline = '2',
+              all_messages = True,
+              write_dac = True,
+              **kwargs
+              ):
+    return SignalGenerator(kicker_devices=[kicker_device],
+                        oscillators = ['line'],
+                        oscillator_variables=[{'V2': value}],
+                        wait_time=0,
+                        write_dac=write_dac,
+                        all_messages=all_messages,
+                        beamline = beamline,
+                        restore = False,
+                        **kwargs
+                        )
+
+
+from kickercontrol.timing import get_region_bounds
+
+
+def SinScan(kicker_device,
+     scan_vector,
+     scan_variable,
+     wait_time = 0,
+     start_time = None,
+     end_time = None,
+     offset = 0,
+     amplitude = 1,
+     periods = 1,
+     phase = 0,
+     beamline = '2',
+     all_messages = False,
+     display = True,
+     relative_scan = False,
+     restore = True,
+     write_dac = True
+     ):
+
+     ti, tf = get_region_bounds(beamline)
+
+     if start_time is None:
+          start_time = ti
+     if end_time is None:
+          end_time = tf
+     
+
+     return Scan(kicker_devices=[kicker_device],
+          scan_vectors=[scan_vector],
+          oscillators = ['sin'],
+          oscillator_variables=[{"V0": start_time,
+                                 "V1": end_time,
+                              "V2": offset,
+                              "V3":amplitude,
+                              "V4": periods/(tf-ti),
+                              "V5": phase}],
+          scan_variables=[scan_variable],
+          wait_time=wait_time,
+          write_dac = write_dac,
+          display = display,
+          beamline = beamline,
+          all_messages=all_messages,
+          relative_scan=relative_scan,
+          restore=restore)
+
