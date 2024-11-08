@@ -259,3 +259,86 @@ def SinScan(kicker_device,
           relative_scan=relative_scan,
           restore=restore)
 
+def RampScan(kicker_device,
+            scan_vector,
+            scan_variable,
+            wait_time = 0,
+            start_time = None,
+            end_time = None,
+            offset = 0,
+            start_value = 0,
+            end_value = 1,
+            beamline = '2',
+            all_messages = False,
+            display = True,
+            relative_scan = False,
+            restore = True,
+            write_dac = True
+            ):
+    ti, tf = get_region_bounds(beamline)
+
+    if start_time is None:
+        start_time = ti
+    if end_time is None:
+        end_time = tf
+
+    return Scan(kicker_devices=[kicker_device],
+        scan_vectors=[scan_vector],
+        oscillators = ['ramp'],
+        oscillator_variables=[{"V0": start_time,
+                                "V1": end_time,
+                            "V2": offset,
+                            "V3":start_value,
+                            "V4": end_value}],
+        scan_variables=[scan_variable],
+        wait_time=wait_time,
+        write_dac = write_dac,
+        display = display,
+        beamline = beamline,
+        all_messages=all_messages,
+        relative_scan=relative_scan,
+        restore=restore)
+
+
+def SquareScan(kicker_device,
+                scan_vector,
+                scan_variable,
+                wait_time = 0,
+                start_time = None,
+                end_time = None,
+                offset = 0,
+                amplitude = 1,
+                n_frequency = 1,
+                duty = 1,
+                beamline = '2',
+                all_messages = False,
+                display = True,
+                relative_scan = False,
+                restore = True,
+                write_dac = True
+                ):
+    ti, tf = get_region_bounds(beamline)
+
+    if start_time is None:
+        start_time = ti
+    if end_time is None:
+        end_time = tf
+    
+
+    return Scan(kicker_devices=[kicker_device],
+        scan_vectors=[scan_vector],
+        oscillators = ['square'],
+        oscillator_variables=[{"V0": start_time,
+                                "V1": end_time,
+                            "V2": offset,
+                            "V3":amplitude,
+                            "V4": n_frequency/((tf-ti)),
+                            "V5": duty}],
+        scan_variables=[scan_variable],
+        wait_time=wait_time,
+        write_dac = write_dac,
+        display = display,
+        beamline = beamline,
+        all_messages=all_messages,
+        relative_scan=relative_scan,
+        restore=restore)

@@ -128,7 +128,7 @@ class SquareSignal(BaseSignal):
         """
         Generates a square wave signal within the specified domain.
         """
-        signal_values = V3 * signal.square(2 * np.pi * V4 * t, duty=V5) + V2
+        signal_values = V3 * signal.square(2 * np.pi * V4 * -(V0-t), duty=V5) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -147,7 +147,7 @@ class TriangleSignal(BaseSignal):
         """
         Generates a triangle wave signal within the specified domain.
         """
-        signal_values = V3 * signal.sawtooth(2 * np.pi * V4 * t, width=0.5) + V2
+        signal_values = V3 * signal.sawtooth(2 * np.pi * V4 * -(V0-t), width=0.5) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -166,10 +166,13 @@ class RampSignal(BaseSignal):
         """
         Generates a ramp signal within the specified domain.
         """
-        ind_min = np.argmin(t-V0)
-        ind_max = np.argmin(t-V1)
+        ind_min = np.argmin(abs(t-V0))
+        ind_max = np.argmin(abs(t-V1))
+
         ramp_signal = np.linspace(V3, V4, ind_max-ind_min)
-        return np.where((t >= V0) & (t <= V1), ramp_signal, V2)
+        signal = np.ones_like(t)*V2
+        signal[ind_min:ind_max] = ramp_signal
+        return signal
 
     def get_latex_expression(self):
         return "\\text{linspace}(V_2, V_2 + (V_1 - V_0), t) + V_2"
@@ -187,7 +190,7 @@ class GaussianSignal(BaseSignal):
         """
         Generates a Gaussian signal within the specified domain.
         """
-        signal_values = V3 * np.exp(-((t - V4) ** 2) / (2 * V5 ** 2)) + V2
+        signal_values = V3 * np.exp(-((-(V0-t) - V4) ** 2) / (2 * V5 ** 2)) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -206,7 +209,7 @@ class ExponentialDecaySignal(BaseSignal):
         """
         Generates an exponentially decaying signal within the specified domain.
         """
-        signal_values = V3 * np.exp(-V4 * t) + V2
+        signal_values = V3 * np.exp(-V4 * -(V0-t)) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -225,8 +228,8 @@ class StepWithDecaySignal(BaseSignal):
         """
         Generates a step function with exponential decay within the specified domain.
         """
-        step_signal = np.heaviside(t - V4, 1)
-        decay_signal = np.exp(-V5 * (t - V4)) * step_signal
+        step_signal = np.heaviside(-(V0-t) - V4, 1)
+        decay_signal = np.exp(-V5 * (-(V0-t) - V4)) * step_signal
         signal_values = V3 * decay_signal + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
@@ -246,7 +249,7 @@ class SpiralScanCosSignal(BaseSignal):
         """
         Generates the cosine component of a spiral scan within the specified domain.
         """
-        signal_values = (V3 + V5 * t) * np.cos(2 * np.pi * V4 * t) + V2
+        signal_values = (V3 + V5 * -(V0-t)) * np.cos(2 * np.pi * V4 * -(V0-t)) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -265,7 +268,7 @@ class SpiralScanSinSignal(BaseSignal):
         """
         Generates the sine component of a spiral scan within the specified domain.
         """
-        signal_values = (V3 + V5 * t) * np.sin(2 * np.pi * V4 * t) + V2
+        signal_values = (V3 + V5 * -(V0-t)) * np.sin(2 * np.pi * V4 * -(V0-t)) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
