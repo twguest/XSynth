@@ -88,7 +88,8 @@ def Scan(kicker_devices,
                                                         oscillator = os,
                                                         beamline = beamline,
                                                         relative_scan=relative_scan,
-                                                        **ov))
+                                                        **ov,
+                                                        **kwargs))
             
             
             M = MeshScan(dac_generators,
@@ -123,7 +124,7 @@ def SignalGenerator(kicker_devices,
               write_dac = False,
               all_messages = True,
               beamline = '2',
-              display = display,
+              display = True,
                 **kwargs):
     """
     Wrapper function for `Scan` to initialize a signal generator configuration.
@@ -198,6 +199,7 @@ def SetKicker(kicker_device,
               beamline = '2',
               all_messages = True,
               write_dac = True,
+              display = False,
               **kwargs
               ):
     return SignalGenerator(kicker_devices=[kicker_device],
@@ -208,6 +210,7 @@ def SetKicker(kicker_device,
                         all_messages=all_messages,
                         beamline = beamline,
                         restore = False,
+                        display = display,
                         **kwargs
                         )
 
