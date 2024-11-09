@@ -14,6 +14,8 @@ class KickerDevice:
         self.device_location = device_location
         self.t, self.initial_signal = pydoocs.read(self.device_location)['data'].T
         
+        ### this could be problematic and may have to depend on which kicker is used
+        self.initial_signal-=32767
 
     def read_dac(self):
         return pydoocs.read(self.device_location)['data']

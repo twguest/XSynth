@@ -207,6 +207,7 @@ class DACSignalGenerator(SignalGenerator):
 
         if self.beamline is not None:
             time, current_signal = self.kicker.read_dac().T
+            current_signal-=32767
             signal_values[time < ti] = current_signal[time < ti]
             signal_values[time > tf] = current_signal[time > tf]
         
