@@ -196,18 +196,28 @@ class DACSignalGenerator(SignalGenerator):
         if self.beamline is not None:
             ti, tf = get_region_bounds(self.beamline)
 
-            if self.signal_params["V0"] < ti:
-                warnings.warn(f"Cannot write before beam region {self.beamline} starting @ {ti} us", UserWarning)
-                self.signal_params["V0"] = ti
-            if self.signal_params["V1"] > tf:
-                warnings.warn(f"Cannot write after beam region {self.beamline} ending @ {tf} us", UserWarning)
-                self.signal_params["V1"] = tf
+            #if self.signal_params["V0"] < ti:
+            #    warnings.warn(f"Cannot write before beam region {self.beamline} starting @ {ti} us", UserWarning)
+            #    self.signal_params["V0"] = ti
+            #if self.signal_params["V1"] > tf:
+            #    warnings.warn(f"Cannot write after beam region {self.beamline} ending @ {tf} us", UserWarning)
+            #    self.signal_params["V1"] = tf
 
         signal_values = float_to_16bit_int(self.oscillator.generate(self.t, **self.signal_params))
 
         if self.beamline is not None:
             time, current_signal = self.kicker.read_dac().T
-            current_signal-=32767
+            if self.kicker.__name__ == 'KL2005':
+                current_signal = np.load("/System/Volumes/Data/home/xfeloper/user/guestt/FD_09-11-24/stored/KL2005_2024-11-09 16:02:32.361300.npy")[:,1]
+            elif self.kicker.__name__ == 'KMX1965':
+                current_signal = np.load("/System/Volumes/Data/home/xfeloper/user/guestt/FD_09-11-24/stored/KNY1965_2024-11-09 16:02:32.423883.npy")[:,1]
+            elif self.kicker.__name__ == 'KMX1938':
+                current_signal = np.load("/System/Volumes/Data/home/xfeloper/user/guestt/FD_09-11-24/stored/KNY1938_2024-11-09 16:02:32.408267.npy")[:,1]
+            elif self.kicker.__name__ == 'KNY1965':
+                current_signal = np.load("/System/Volumes/Data/home/xfeloper/user/guestt/FD_09-11-24/stored/KNY1965_2024-11-09 16:02:32.423883.npy")[:,1]
+            elif self.kicker.__name__ == 'KNY1938':
+                current_signal = np.load("/System/Volumes/Data/home/xfeloper/user/guestt/FD_09-11-24/stored/KNY1938_2024-11-09 16:02:32.408267.npy")[:,1]
+
             signal_values[time < ti] = current_signal[time < ti]
             signal_values[time > tf] = current_signal[time > tf]
         
@@ -232,7 +242,7 @@ class DACSignalGenerator(SignalGenerator):
 
         # Here you would write the signal data to the DAC device through the kicker
         # This is a placeholder for the actual writing logic
-        print(f"Writing signal to kicker {self.kicker.device_location}...")
+        #print(f"Writing signal to kicker {self.kicker.device_location}...")
         try:
             self.kicker.write_dac(signal_data.values, self.relative_scan)
         except Exception as e:

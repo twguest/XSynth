@@ -72,7 +72,7 @@ def Scan(kicker_devices,
                 
                 if beamline is not None:
                     ti, tf = get_region_bounds(beamline)
-
+                    
                     if "V0" not in ov:
                           ov["V0"] = ti
                     if "V1" not in ov:
@@ -125,6 +125,7 @@ def SignalGenerator(kicker_devices,
               all_messages = True,
               beamline = '2',
               display = True,
+              relative_scan = False,
                 **kwargs):
     """
     Wrapper function for `Scan` to initialize a signal generator configuration.
@@ -177,7 +178,8 @@ def MacroScan(kicker_devices,
               all_messages = False,
               display = False,
               beamline = None,
-              wait_time = 1):
+              wait_time = 1,
+              relative_scan = False):
     
     N = len(kicker_devices)
     scan_output = Scan(kicker_devices,
@@ -189,7 +191,8 @@ def MacroScan(kicker_devices,
               display = display,
               all_messages=all_messages,
               beamline = beamline,
-              wait_time = wait_time)
+              wait_time = wait_time,
+              relative_scan=relative_scan)
     
     return scan_output
 

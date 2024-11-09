@@ -15,7 +15,6 @@ class KickerDevice:
         self.t, self.initial_signal = pydoocs.read(self.device_location)['data'].T
         
         ### this could be problematic and may have to depend on which kicker is used
-        self.initial_signal-=32767
 
     def read_dac(self):
         return pydoocs.read(self.device_location)['data']
@@ -30,13 +29,14 @@ class KickerDevice:
         """
         
         ### may not strictly be true
-        assert np.max(abs(pulse_values)) <= 32767, "Kicker Strengths must be in the domain (-32767, 32767)"
+        #assert np.max(abs(pulse_values)) <= 32767, "Kicker Strengths must be in the domain (-32767, 32767)"
         
         if relative_scan:
             pulse_values+=self.initial_signal
+
         try:
             pydoocs.write(self.device_location, pulse_values.tolist())
-            print("Succesful Write")
+            #print("Succesful Write")
         except Exception as e:
             print(f"Failed to write DAC: {e}")
 
@@ -79,7 +79,7 @@ class KL2005(KickerDevice):
 
     def __init__(self):
         
-        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI2001TL.2/DAC_CH0.TD")
+        super().__init__(device_location="XFEL.DIAG/SIS8300DMA/DI2001TL.2/DAC_CH.TD")
 
     @property
     def __name__(self):
