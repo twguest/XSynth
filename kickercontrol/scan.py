@@ -130,8 +130,9 @@ class MiniScan:
                             
                             a.set_xlabel("Time (us)")
                             
-                        ins_ax.set_ylim(-32767,32767)
-                        ins_ax.set_yticks([-32767,32767])
+                        #ins_ax.set_ylim(-32767,32767)
+                        ins_ax.set_ylim(32767-32767*0.125,32767+32767*0.125)
+                        ins_ax.set_yticks([32767-32767*0.125,32767+32767*0.125])
                         
                         ins_ax.set_xlim(700, region_timing[-1]+75)
         
@@ -145,8 +146,9 @@ class MiniScan:
                         
                         tax.set_ylabel("DAC Signal (Volts.)")
 
-                        vmax = 0.25 ### horrible hard coded voltage max for main display
-                        ax.set_ylim(-32767*vmax, 32767*vmax)
+                        vmax = 1 ### horrible hard coded voltage max for main display
+                        ax.set_ylim(0*vmax, 2*32767*vmax)
+                        #ax.set_ylim(-32767*vmax, 32767*vmax)
                         tax.set_ylim(-vmax, vmax)
 
                         ### init plot

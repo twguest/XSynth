@@ -7,7 +7,7 @@ from kickercontrol.__base__ import (
     LineSignal, SinSignal, CosSignal, SquareSignal, TriangleSignal, RampSignal,
     GaussianSignal, ExponentialDecaySignal, StepWithDecaySignal, SpiralScanCosSignal, SpiralScanSinSignal, CustomExpressionSignal
 )
-from kickercontrol.utils import float_to_16bit_int
+from kickercontrol.utils import float_to_16bit_int,float_to_16bit_unsigned_int
 from kickercontrol.timing import get_region_bounds
 
 class SignalGenerator:
@@ -194,7 +194,11 @@ class DACSignalGenerator(SignalGenerator):
         ### hard limit for which beam regions can be written
 
         if self.beamline is not None:
-            ti, tf = get_region_bounds(self.beamline)
+            try:
+                ti = self.signal_params["V0"]
+                tf = self.signal_params["V1"]
+            except Exception:
+                ti, tf = get_region_bounds(self.beamline)
 
             #if self.signal_params["V0"] < ti:
             #    warnings.warn(f"Cannot write before beam region {self.beamline} starting @ {ti} us", UserWarning)
@@ -202,8 +206,8 @@ class DACSignalGenerator(SignalGenerator):
             #if self.signal_params["V1"] > tf:
             #    warnings.warn(f"Cannot write after beam region {self.beamline} ending @ {tf} us", UserWarning)
             #    self.signal_params["V1"] = tf
-
-        signal_values = float_to_16bit_int(self.oscillator.generate(self.t, **self.signal_params))
+        signal_values = float_to_16bit_unsigned_int(self.oscillator.generate(self.t, **self.signal_params))
+        #signal_values = float_to_16bit_int(self.oscillator.generate(self.t, **self.signal_params))
 
         if self.beamline is not None:
             time, current_signal = self.kicker.read_dac().T
