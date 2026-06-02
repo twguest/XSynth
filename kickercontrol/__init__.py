@@ -1,1 +1,0 @@
-from kickercontrol.main import Scan, SignalGenerator

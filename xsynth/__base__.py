@@ -25,7 +25,7 @@ import numpy as np
 from scipy import signal
 from scipy import special
 
-from kickercontrol.timing import get_bunch_pattern
+from xsynth.timing import get_bunch_pattern
 class BaseSignal:
     """
     Base class for all signal types. Provides methods to get variable mapping,

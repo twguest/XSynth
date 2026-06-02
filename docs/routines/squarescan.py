@@ -1,10 +1,10 @@
 
 import numpy as np
 
-from kickercontrol.main import SquareScan
-from kickercontrol.device import (KL2005, KMX1938, KMX1965, KNY1938, KNY1965)
+from xsynth.main import SquareScan
+from xsynth.device import (KL2005, KMX1938, KMX1965, KNY1938, KNY1965)
 
-from kickercontrol.timing import get_region_bounds
+from xsynth.timing import get_region_bounds
 
 ti, tf = get_region_bounds('2')
 

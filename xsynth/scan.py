@@ -6,8 +6,8 @@ from datetime import datetime
 import numpy as np
 from copy import copy
 from matplotlib import pyplot as plt
-from kickercontrol.utils import in_notebook
-from kickercontrol.timing import get_beam_regions
+from xsynth.utils import in_notebook
+from xsynth.timing import get_beam_regions
 from IPython.display import display, clear_output
 
 from scipy.spatial import cKDTree
@@ -15,23 +15,23 @@ from scipy.spatial import cKDTree
 
 
 class MiniScan:
-    def __init__(self, dac_generators, scan_variables, scan_properties=None, wait_time=0.1, write_dac = False, plot_display = False, all_messages = False):
+    def __init__(self, generators, scan_variables, scan_properties=None, wait_time=0.1, write = False, plot_display = False, all_messages = False):
         """
         Initialize the MiniScan tool.
 
         Parameters:
-        dac_generators (list of DACSignalGenerator): A list of DACSignalGenerator objects to scan.
+        generators (list of DACSignalGenerator): A list of DACSignalGenerator objects to scan.
         scan_variables (list of str): A list of variable names to update for each DACSignalGenerator.
         scan_properties (dict): A dictionary of scan properties (e.g., radii, center points, etc.).
         wait_time (float): Time in seconds to sleep between each scan point.
         """
-        if len(dac_generators) == 0:
+        if len(generators) == 0:
             raise ValueError("At least one DACSignalGenerator is required.")
-        if len(dac_generators) != len(scan_variables):
+        if len(generators) != len(scan_variables):
             raise ValueError("The number of DACSignalGenerators must match the number of variable names.")
         
         self.all_messages = all_messages
-        self.dac_generators = dac_generators
+        self.generators = generators
         self.scan_variables = scan_variables
         self.scan_properties = scan_properties or {}
         self.wait_time = wait_time
@@ -47,7 +47,7 @@ class MiniScan:
         raise NotImplementedError("Subclasses must implement 'generate_scan_points' method.")
         self.scan_points = None
 
-    def execute_scan(self, write_dac = False, plot_display = False):
+    def execute_scan(self, write = False, plot_display = False):
         """
         Execute the scan by iterating through all scan points and writing to the DAC devices.
         """
@@ -59,10 +59,10 @@ class MiniScan:
         self.signals = []
 
         ### initialise signal gen
-        for i, dac_generator in enumerate(self.dac_generators):
+        for i, generator in enumerate(self.generators):
             init_point = self.scan_points[0]
             variable_name = self.scan_variables[i]
-            dac_generator.update_variable(**{variable_name: init_point[i]})
+            generator.update_variable(**{variable_name: init_point[i]})
 
         print(f"# Scan Points: {len(self.scan_points)}")
         
@@ -73,14 +73,14 @@ class MiniScan:
             
             S = [] ## Signal Container
 
-            for i, dac_generator in enumerate(self.dac_generators):
+            for i, generator in enumerate(self.generators):
                 
                 
                 # Update signal parameter for each DAC generator based on the scan point
                 variable_name = self.scan_variables[i]
-                dac_generator.update_variable(**{variable_name: point[i]})
+                generator.update_variable(**{variable_name: point[i]})
 
-                S.append(dac_generator.generated_signal)
+                S.append(generator.signal)
 
                 if self.plot_display:
 
@@ -96,86 +96,51 @@ class MiniScan:
 
                         fig, ax = plt.subplots(figsize = (8,6))
 
-                        def plot_beam_regions(ax):
-
-                            regions, region_timing = get_beam_regions()
-                            for itr, r in enumerate(regions):
-
-                                if r == 'D':
-                                    color = 'grey'
-                                if r == '1':
-                                    color = 'blue'
-                                if r == '2':
-                                    color = 'orange'
-                                if r == '3':
-                                    color = 'green'
-                                if "13" in r:
-                                    color = 'magenta'
-                                
-                                try:
-
-                                    ax.axvspan(region_timing[itr], region_timing[itr+1], color = color, alpha = 0.2)
-
-                                except Exception as e:
-                                    break
                             
-                            return regions, region_timing
-                        
-                        ins_ax = ax.inset_axes([.55, .65, 0.4, 0.3])
-                        ins_ax.patch.set_alpha(0.5)
-
-                        for a in [ax, ins_ax]:
-                            
-                            regions, region_timing = plot_beam_regions(a)
-                            
-                            a.set_xlabel("Time (us)")
+                        ax.set_xlabel("")
                             
                         #ins_ax.set_ylim(-32767,32767)
-                        ins_ax.set_ylim(32767-32767*0.125,32767+32767*0.125)
-                        ins_ax.set_yticks([32767-32767*0.125,32767+32767*0.125])
                         
-                        ins_ax.set_xlim(700, region_timing[-1]+75)
+                        
+                        #ins_ax.set_xlim(700, region_timing[-1]+75)
         
-                        ax.set_xlim(dac_generator.signal_params["V0"]-75,
-                                    dac_generator.signal_params["V1"]+75)                        
+                        # ax.set_xlim(generator.signal_params["V0"]-75,
+                        #             generator.signal_params["V1"]+75)                        
 
                         ax.set_ylabel("DAC Signal (16-bit Signed Integer)")
 
                         
-                        tax = ax.twinx()
+                        #tax = ax.twinx()
                         
-                        tax.set_ylabel("DAC Signal (Volts.)")
+                        #tax.set_ylabel("DAC Signal (Volts.)")
 
-                        vmax = 1 ### horrible hard coded voltage max for main display
-                        ax.set_ylim(0*vmax, 2*32767*vmax)
+                        #vmax = 1 ### horrible hard coded voltage max for main display
+                        #ax.set_ylim(0*vmax, 2*32767*vmax)
                         #ax.set_ylim(-32767*vmax, 32767*vmax)
-                        tax.set_ylim(-vmax, vmax)
+                        #tax.set_ylim(-vmax, vmax)
 
                         ### init plot
-                        for itr, dac_generator in enumerate(self.dac_generators):
-                            ins_lines[str(itr)], = ins_ax.plot(dac_generator.t, dac_generator.generated_signal)
-                            lines[str(itr)], = ax.plot(dac_generator.t, dac_generator.generated_signal, label = dac_generator.kicker.__name__)
+                        for itr, generator in enumerate(self.generators):
+                            
+                            lines[str(itr)], = ax.plot(generator.t, generator.signal, label = generator.server.__name__)
 
                             clear_output(wait=True)
                             display(fig)
 
-                        lines = [lines[str(itr)] for itr in range(len(self.dac_generators))]
-                        print(lines)
-                        ins_lines = [ins_lines[str(itr)] for itr in range(len(self.dac_generators))]    
+                        lines = [lines[str(itr)] for itr in range(len(self.generators))]
+                        
                         ax.legend(loc = 'lower right')
                     
-                    lines[i].set_ydata(dac_generator.generated_signal)
-                    ins_lines[i].set_ydata(dac_generator.generated_signal)
-                    
-                    
+                    lines[i].set_ydata(generator.signal)
+                                        
                     clear_output(wait=True)
                     display(fig)
 
-                if i == len(self.dac_generators)-1:    
+                if i == len(self.generators)-1:    
                     itr_start = datetime.now()
-                if write_dac:
+                if write:
                     try:
-                        dac_generator.write_dac_signal()
+                        generator.write()
                     except Exception as e:
                         print(e)
                         break
@@ -202,7 +167,7 @@ class MiniScan:
         return self.generate_scan_points()
 
 class SpiralScan(MiniScan):
-    def __init__(self, dac_generators, scan_variables, x_center, y_center, x_radius, y_radius, num_turns=4, N=1000, wait_time=0.1):
+    def __init__(self, generators, scan_variables, x_center, y_center, x_radius, y_radius, num_turns=4, N=1000, wait_time=0.1):
         scan_properties = {
             'x_center': x_center,
             'y_center': y_center,
@@ -211,7 +176,7 @@ class SpiralScan(MiniScan):
             'num_turns': num_turns,
             'N': N
         }
-        super().__init__(dac_generators, scan_variables, scan_properties, wait_time)
+        super().__init__(generators, scan_variables, scan_properties, wait_time)
 
     def generate_scan_points(self):
         """
@@ -224,7 +189,7 @@ class SpiralScan(MiniScan):
         y_radius = self.scan_properties['y_radius']
         num_turns = self.scan_properties['num_turns']
 
-        if len(self.dac_generators) != 2:
+        if len(self.generators) != 2:
             raise ValueError("Spiral scan requires exactly 2 DACSignalGenerators.")
 
         # Generate theta values for the spiral
@@ -248,15 +213,15 @@ class SpiralScan(MiniScan):
 
 class MeshScan(MiniScan):
 
-    def __init__(self, dac_generators, scan_variables, scan_vectors, wait_time=0.1, **kwargs):
+    def __init__(self, generators, scan_variables, scan_vectors, wait_time=0.1, **kwargs):
         scan_properties = {'scan_vectors': scan_vectors}
-        super().__init__(dac_generators, scan_variables, scan_properties, wait_time, **kwargs)
+        super().__init__(generators, scan_variables, scan_properties, wait_time, **kwargs)
 
     def generate_scan_points(self):
         """
         Generate the mesh scan points based on the specified scan_vectors.
         """
-        M = len(self.dac_generators)
+        M = len(self.generators)
         if len(self.scan_properties['scan_vectors']) != M:
             raise ValueError("The number of scan_vectors must match the number of DACSignalGenerators.")
 
@@ -276,7 +241,7 @@ if __name__ == '__main__':
             oscillator = 'sin',
             oscillator_variables={"V2": 0},
             scan_variables=["V3"],
-            write_dac = False,
+            write = False,
             all_messages=False,
             display = True,
             beamline = '2',

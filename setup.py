@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='kickercontrol',
+    name='xsynth',
     version='0.1.0',
     author='Trey Guest',
     author_email='trey.guest@xfel.eu',
