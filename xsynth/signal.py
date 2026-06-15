@@ -10,6 +10,7 @@ from xsynth.__base__ import (
 from xsynth.utils import float_to_16bit_int,float_to_16bit_unsigned_int
 from xsynth.timing import get_region_bounds
 
+
 class SignalGenerator:
     def __init__(self, t, unit='bunches', dt=None, oscillator=None, relative_scan = False, **kwargs):
         """
@@ -99,22 +100,46 @@ class SignalGenerator:
         #return xr.DataArray(signal_values, dims=['time'], coords={'time': self.t}, attrs={'unit': 'us'})
 
 
-    def update_variable(self, **kwargs):
+    def update_variable(self, update_time_axis=True, **kwargs):
         """
-        Update the value of one or more signal parameters and regenerate the signal.
-        
-        Parameters:
-        kwargs: Dictionary of variable names and their new values.
+        Update signal parameters. Optionally update self.t from V0/V1.
         """
         if self.signal_params is None:
-            raise RuntimeError("Signal parameters have not been set. Use 'set_oscillator' to define the signal type and parameters.")
-        
+            raise RuntimeError(
+                "Signal parameters have not been set. Use 'set_oscillator' first."
+            )
+
         for key, value in kwargs.items():
             if key in self.signal_params:
                 self.signal_params[key] = value
             else:
-                raise ValueError(f"Parameter '{key}' is not a valid parameter for the current oscillator.")
+                raise ValueError(
+                    f"Parameter '{key}' is not a valid parameter for the current oscillator."
+                )
 
+        if update_time_axis and ("V0" in kwargs or "V1" in kwargs):
+            if "V0" in self.signal_params and "V1" in self.signal_params:
+                t0 = self.signal_params["V0"]
+                t1 = self.signal_params["V1"]
+
+                if self.unit == "bunches":
+                    self.update_t(np.arange(int(t0), int(t1) + 1))
+
+                elif self.unit == "time":
+                    if not hasattr(self, "dt") or self.dt is None:
+                        raise ValueError("dt must be defined to update a time-axis.")
+                    self.update_t(np.arange(t0, t1, self.dt))
+
+    def update_t(self, t):
+        """
+        Dynamically update the time/pulse axis used to generate the signal.
+
+        Parameters
+        ----------
+        t : array-like
+            New time or pulse axis.
+        """
+        self.t = np.asarray(t)
 
 class DACSignalGenerator(SignalGenerator):
     """
@@ -284,8 +309,6 @@ class ADAPTSignalGenerator(SignalGenerator):
             Additional arguments for each signal type, e.g., amplitude or frequency.
         """
         beam_regions = ["ALL", "SA1", "SA2", "SA3", "SA4"]
-
-
         assert type(adaptation_server) != type, "Instantiate the kicker device (e.g., KickerDevice() ) before passing to DACSignalGenerator"
         self.server = adaptation_server
         self.beam_region = self.server.beam_region
@@ -294,9 +317,13 @@ class ADAPTSignalGenerator(SignalGenerator):
 
         # t = np.arange(len(self.server.pulseId)) ### SAVE FOR VARIABLE CHARGE SERVER
         # Current implementation makes the assumption of contiguous beam_region SASE13
+        kwargs["V0"] = self.server.pulseId.min()
+        kwargs["V1"] = self.server.pulseId.max()
+
         super().__init__(t = np.arange(self.server.pulseId.min(), self.server.pulseId.max()),
                          unit='bunches', oscillator = oscillator, **kwargs)
-        
+    
+
     # def generate_signal(self):
     #     """
     #     Generate the signal using the configured oscillator.

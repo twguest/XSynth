@@ -184,9 +184,65 @@ class ADAPTSERVER(KickerDevice):
 
         try:
             pydoocs.write(self.ramp_location, ramp_signal)
+            pydoocs.write(self.device_location + "ADAPT", 1)
             #print("Succesful Write")
         except Exception as e:
             print(f"Failed to write to Adaptation Server: {e}")
+
+
+class ADAPTIONMIDDLELAYER(KickerDevice):
+    """
+    Adaptation Server 
+    """
+    def __init__(self, device_location, beam_region):
+        """
+        Initialize the xsynth class with the given device path.
+        
+        Parameters:
+        device_location (str): The full path of the kicker device to control, including channel.
+        """
+        self.device_type = "ADAPT_MLS"
+        self.device_location = device_location
+
+        self.beam_region = beam_region
+        assert self.beam_region in ["SA2"]
+        
+        self.ramp_location = device_location + "USER.BPM.OFFSET.RAMP." + self.beam_region
+                
+        self.initial_signal = pydoocs.read(self.ramp_location)['data']
+
+    @property
+    def __name__(self):
+        return "ADAPTATION_MLS"
+
+    @property
+    def pulseId(self):
+        return pydoocs.read(f"XFEL.FEEDBACK/KICKERDC_BETA/CONTROL/BPM.PULSES.{self.beam_region}.INDX")['data']
+    
+    def read(self):
+        return pydoocs.read(self.ramp_location)['data']
+
+
+    def write(self, signal, pulseId):
+        """
+        Write values
+        
+        Parameters:
+        signal (numpy.ndarray): The signal values to the ramp location
+        relative (Bool): Scan relative to the intial signla
+        """
+        ramp_signal = self.read()
+        ramp_signal[pulseId] = signal
+
+        try:
+            pydoocs.write(self.ramp_location, ramp_signal)
+            pydoocs.write(self.device_location + "USER.SET.RAMP.SA2", 1)
+            pydoocs.write(self.device_location + "USER.ADAPT.SA2", 1)
+            
+            #print("Succesful Write")
+        except Exception as e:
+            print(f"Failed to write to Adaptation MLS: {e}")
+            raise
 
         
     
@@ -200,6 +256,19 @@ class ADAPTX(ADAPTSERVER):
     @property
     def __name__(self):
         return "ADAPTX"
+    
+
+class ADAPT_MLS(ADAPTIONMIDDLELAYER):
+
+    def __init__(self, beam_region):
+        
+        super().__init__(device_location="XFEL.FEL/KICKER.ADAPTION.ML/SA2/",
+                         beam_region = beam_region)
+
+    @property
+    def __name__(self):
+        return "ADAPT_MLS"
+    
     
 
 
