@@ -10,17 +10,26 @@ Getting started
 pip install -e .
 ```
 
+- Install the GUI extras if you want the desktop interface:
+
+```bash
+pip install -e .[gui]
+```
+
+- Start the GUI with:
+
+```bash
+xsynth-gui
+```
+
 - Open the example notebooks in `examples/` with Jupyter or JupyterLab.
 
 Files
 
-- `examples/progressive_demo.ipynb`: A step-by-step notebook showing progressively more complex examples of devices, signals, and scans.
-- `examples/scan_demo.ipynb`: Existing scan examples.
+- `examples/fady_demo.ipynb`: A step-by-step notebook showing progressively more complex examples of devices, signals, and scans.
 
 Quick demo outline
 
 - Example 1: Basic device set and read operations
 - Example 2: Single-device scan with a simple oscillator
 - Example 3: Multi-device multi-signal scan combining different oscillators
-
-If you'd like, I can run or lint the notebook, or add more device/signal examples. Tell me which devices or signal types you want covered.
