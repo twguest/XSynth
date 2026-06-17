@@ -1,1 +1,1 @@
-from xsynth.main import Scan, SignalGenerator
+from xsynth.main import Scan

@@ -1,6 +1,46 @@
 from xsynth.signal import DACSignalGenerator, ADAPTSignalGenerator
 from xsynth.scan import MeshScan
-from xsynth.timing import get_region_bounds
+from xsynth.device import ADAPT_MLS
+import inspect
+import numpy as np
+
+
+def _instantiate_scan_device(device, beam_region):
+    """Instantiate a scan device, passing beam_region only if accepted."""
+
+    if not callable(device):
+        return device
+
+    signature = inspect.signature(device)
+    beam_region_param = signature.parameters.get("beam_region")
+    if beam_region_param is not None:
+        if beam_region is not None:
+            return device(beam_region=beam_region)
+
+        if beam_region_param.default is inspect.Parameter.empty:
+            raise ValueError(
+                f"{getattr(device, '__name__', device)!r} requires beam_region."
+            )
+
+        return device()
+
+    return device()
+
+
+def _as_sequence(value):
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def _expand_to_length(value, length, name):
+    values = _as_sequence(value)
+    if len(values) == 1:
+        return values * length
+    if len(values) != length:
+        raise ValueError(f"{name} must have length 1 or match the number of devices.")
+    return values
+
 
 def Scan(devices,
               scan_vectors,
@@ -38,7 +78,7 @@ def Scan(devices,
             - display: bool, optional (default=False)
                 If True, displays scan plots if applicable.
             - beam_region: str or None, optional (default=None)
-                Specifies the beam_region; if provided, it sets up region bounds for oscillators using `get_region_bounds`.
+                Beam region used when constructing ADAPT/IBFB device servers.
             - kwargs: dict, optional
                 Additional keyword arguments passed to DACSignalGenerator or MeshScan.
 
@@ -68,19 +108,41 @@ def Scan(devices,
                 os = oscillators[itr]
                 ov = oscillator_variables[itr]
 
-                Device = device()
+                Device = _instantiate_scan_device(device, beam_region)
 
                 if Device.device_type == 'DAC':
-                     Generator = DACSignalGenerator
+                     generator = DACSignalGenerator(
+                         Device,
+                         oscillator=os,
+                         relative_scan=relative_scan,
+                         **ov,
+                         **kwargs,
+                     )
                 elif Device.device_type == 'ADAPT':
-                     Generator = ADAPTSignalGenerator 
-                
-                generators.append(Generator(Device,
-                                            oscillator = os,
-                                            beam_region = beam_region,
-                                            relative_scan=relative_scan,
-                                            **ov,
-                                            **kwargs))
+                     generator = ADAPTSignalGenerator(
+                         Device,
+                         oscillator=os,
+                         **ov,
+                         **kwargs,
+                     )
+                elif Device.device_type == 'ADAPT_MLS':
+                     generator = ADAPTSignalGenerator(
+                         Device,
+                         oscillator=os,
+                         **ov,
+                         **kwargs,
+                     )
+                elif Device.device_type == 'IBFB':
+                     generator = ADAPTSignalGenerator(
+                         Device,
+                         oscillator=os,
+                         **ov,
+                         **kwargs,
+                     )
+                else:
+                     raise ValueError(f"Unsupported device type: {Device.device_type}")
+
+                generators.append(generator)
 
             
             M = MeshScan(generators,
@@ -101,236 +163,80 @@ def Scan(devices,
             return M
 
 
-def SignalGenerator(kicker_devices,
-              oscillators,
-              oscillator_variables,
-              wait_time=0,
-              write = False,
-              all_messages = True,
-              beam_region = '2',
-              display = True,
-              relative_scan = False,
-                **kwargs):
+def SetDevice(
+    devices,
+    value,
+    beam_region=None,
+    wait_time=0,
+    write=True,
+    all_messages=True,
+    display=False,
+    relative_scan=False,
+    **kwargs,
+):
+    """Set one or more ADAPT/IBFB devices to a constant value.
+
+    The beam region is configured on the device/server. The signal generator
+    uses a line oscillator over that device-owned beam region, and the scan has
+    a single point per device.
     """
-    Wrapper function for `Scan` to initialize a signal generator configuration.
 
-    Parameters:
-    - kicker_devices: list
-        List of kicker device objects to control.
-    - oscillators: list
-        List of oscillators controlling each kicker device.
-    - oscillator_variables: list of dict
-        Configuration variables for each oscillator.
-    - wait_time: float, optional (default=0)
-        Time to wait between scan iterations.
-    - write: bool, optional (default=False)
-        If True, restores DAC conditions after execution.
-    - all_messages: bool, optional (default=True)
-        Enables message display during execution.
-    - beam_region: str, optional (default='2')
-        Specifies the beam_region used for `Scan`.
-    - kwargs: dict, optional
-        Additional arguments passed to `Scan`.
+    devices = _as_sequence(devices)
+    values = _expand_to_length(value, len(devices), "value")
 
-    Returns:
-    - MeshScan object generated by `Scan`.
-
-    Example:
-    ```
-    signal_gen = SignalGenerator(kicker_devices, oscillators, oscillator_variables)
-    ```
-    """
-    
-    return Scan(kicker_devices=kicker_devices,
-                scan_vectors=[None for k in kicker_devices],
-                oscillators = oscillators,
-                oscillator_variables=oscillator_variables,
-                scan_variables=["V7" for k in kicker_devices],
-                write = write,
-                all_messages = all_messages,
-                display = display,
-                beam_region = beam_region,
-                wait_time= wait_time,
-                **kwargs)
-
-
-
-
-def MacroScan(kicker_devices,
-              scan_vectors,
-              write = False,
-              all_messages = False,
-              display = False,
-              beam_region = None,
-              wait_time = 1,
-              relative_scan = False):
-    
-    N = len(kicker_devices)
-    scan_output = Scan(kicker_devices,
-              scan_vectors = scan_vectors,
-              oscillators = ['line' for n in range(N)],
-              scan_variables=["V2" for n in range(N)],
-              oscillator_variables=[{} for n in range(N)],
-              write = write,
-              display = display,
-              all_messages=all_messages,
-              beam_region = beam_region,
-              wait_time = wait_time,
-              relative_scan=relative_scan)
-    
-    return scan_output
-
-
-def SetKicker(kicker_device,
-              value,
-              beam_region = '2',
-              all_messages = True,
-              write = True,
-              display = False,
-              start_time = None,
-              end_time = None,
-              **kwargs
-              ):
-    return SignalGenerator(kicker_devices=[kicker_device],
-                        oscillators = ['line'],
-                        oscillator_variables=[{"V0": start_time, "V1":end_time,'V2': value}],
-                        wait_time=0,
-                        write=write,
-                        all_messages=all_messages,
-                        beam_region = beam_region,
-                        restore = False,
-                        display = display,
-                        **kwargs
-                        )
-
-
-from xsynth.timing import get_region_bounds
-
-
-def SinScan(kicker_device,
-     scan_vector,
-     scan_variable,
-     wait_time = 0,
-     start_time = None,
-     end_time = None,
-     offset = 0,
-     amplitude = 1,
-     periods = 1,
-     phase = 0,
-     beam_region = '2',
-     all_messages = False,
-     display = True,
-     relative_scan = False,
-     restore = True,
-     write = True
-     ):
-
-     ti, tf = get_region_bounds(beam_region)
-
-     if start_time is None:
-          start_time = ti
-     if end_time is None:
-          end_time = tf
-     
-
-     return Scan(kicker_devices=[kicker_device],
-          scan_vectors=[scan_vector],
-          oscillators = ['sin'],
-          oscillator_variables=[{"V0": start_time,
-                                 "V1": end_time,
-                              "V2": offset,
-                              "V3":amplitude,
-                              "V4": periods/(tf-ti),
-                              "V5": phase}],
-          scan_variables=[scan_variable],
-          wait_time=wait_time,
-          write = write,
-          display = display,
-          beam_region = beam_region,
-          all_messages=all_messages,
-          relative_scan=relative_scan,
-          restore=restore)
-
-def RampScan(kicker_device,
-            scan_vector,
-            scan_variable,
-            wait_time = 0,
-            start_time = None,
-            end_time = None,
-            offset = 0,
-            start_value = 0,
-            end_value = 1,
-            beam_region = '2',
-            all_messages = False,
-            display = True,
-            relative_scan = False,
-            restore = True,
-            write = True
-            ):
-    ti, tf = get_region_bounds(beam_region)
-
-    if start_time is None:
-        start_time = ti
-    if end_time is None:
-        end_time = tf
-
-    return Scan(kicker_devices=[kicker_device],
-        scan_vectors=[scan_vector],
-        oscillators = ['ramp'],
-        oscillator_variables=[{"V0": start_time,
-                                "V1": end_time,
-                            "V2": offset,
-                            "V3":start_value,
-                            "V4": end_value}],
-        scan_variables=[scan_variable],
+    return Scan(
+        devices=devices,
+        scan_vectors=[np.asarray([v], dtype=float) for v in values],
+        oscillators=["line" for _ in devices],
+        oscillator_variables=[{} for _ in devices],
+        scan_variables=["V2" for _ in devices],
         wait_time=wait_time,
-        write = write,
-        display = display,
-        beam_region = beam_region,
+        write=write,
         all_messages=all_messages,
+        display=display,
+        beam_region=beam_region,
         relative_scan=relative_scan,
-        restore=restore)
+        **kwargs,
+    )
 
 
-def SquareScan(kicker_device,
-                scan_vector,
-                scan_variable,
-                wait_time = 0,
-                start_time = None,
-                end_time = None,
-                offset = 0,
-                amplitude = 1,
-                n_frequency = 1,
-                duty = 1,
-                beam_region = '2',
-                all_messages = False,
-                display = True,
-                relative_scan = False,
-                restore = True,
-                write = True
-                ):
-    ti, tf = get_region_bounds(beam_region)
+def SetADAPT(
+    device=None,
+    value=None,
+    beam_region=None,
+    server=None,
+    **kwargs,
+):
+    """Compatibility wrapper for setting an ADAPT-like device constant."""
 
-    if start_time is None:
-        start_time = ti
-    if end_time is None:
-        end_time = tf
-    
+    if device is None:
+        device = server
+    if device is None:
+        raise ValueError("SetADAPT requires a device or server.")
+    if value is None:
+        raise ValueError("SetADAPT requires a value.")
+    if beam_region is None:
+        beam_region = getattr(device, "beam_region", None)
 
-    return Scan(kicker_devices=[kicker_device],
-        scan_vectors=[scan_vector],
-        oscillators = ['square'],
-        oscillator_variables=[{"V0": start_time,
-                                "V1": end_time,
-                            "V2": offset,
-                            "V3":amplitude,
-                            "V4": n_frequency/((tf-ti)),
-                            "V5": duty}],
-        scan_variables=[scan_variable],
-        wait_time=wait_time,
-        write = write,
-        display = display,
-        beam_region = beam_region,
-        all_messages=all_messages,
-        relative_scan=relative_scan,
-        restore=restore)
+    return SetDevice(
+        devices=device,
+        value=value,
+        beam_region=beam_region,
+        **kwargs,
+    )
+
+
+def SetADAPTMLS(
+    value,
+    beam_region="SA2",
+    devices=ADAPT_MLS,
+    **kwargs,
+):
+    """Set the ADAPT middle-layer device to a constant value."""
+
+    return SetDevice(
+        devices=devices,
+        value=value,
+        beam_region=beam_region,
+        **kwargs,
+    )

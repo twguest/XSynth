@@ -15,7 +15,7 @@ from scipy.spatial import cKDTree
 
 
 class MiniScan:
-    def __init__(self, generators, scan_variables, scan_properties=None, wait_time=0.1, write = False, plot_display = False, all_messages = False):
+    def __init__(self, generators, scan_variables, scan_properties=None, fix_beam_region = False, wait_time=0.1, write = False, plot_display = False, all_messages = False):
         """
         Initialize the MiniScan tool.
 
@@ -51,24 +51,30 @@ class MiniScan:
         """
         Execute the scan by iterating through all scan points and writing to the DAC devices.
         """
-        if self.scan_points is None:
+        if plot_display:
+            self.plot_display = True
+
+        scan_points = np.asarray(self.generate_scan_points(), dtype=float)
+        if scan_points.size == 0:
             raise RuntimeError("Scan points have not been generated. Call 'generate_scan_points' first.")
         
         
         self.timestamps = []
         self.signals = []
+        self.scan_points_executed = scan_points
 
         ### initialise signal gen
         for i, generator in enumerate(self.generators):
-            init_point = self.scan_points[0]
+            init_point = scan_points[0]
             variable_name = self.scan_variables[i]
             generator.update_variable(**{variable_name: init_point[i]})
 
-        print(f"# Scan Points: {len(self.scan_points)}")
+        print(f"# Scan Points: {len(scan_points)}")
         
         t_start = datetime.now()
         
-        for k, point in tqdm(enumerate(self.scan_points)):
+        for k, point in tqdm(enumerate(scan_points), total=len(scan_points)):
+            point_start = time.time()
             
             
             S = [] ## Signal Container
@@ -80,7 +86,8 @@ class MiniScan:
                 variable_name = self.scan_variables[i]
                 generator.update_variable(**{variable_name: point[i]})
 
-                S.append(generator.signal)
+                signal_values = np.asarray(generator.signal).copy()
+                S.append(signal_values)
 
                 if self.plot_display:
 
@@ -97,7 +104,7 @@ class MiniScan:
                         fig, ax = plt.subplots(figsize = (8,6))
 
                             
-                        ax.set_xlabel("")
+                        ax.set_xlabel(self.generators[0].unit)
                             
                         #ins_ax.set_ylim(-32767,32767)
                         
@@ -107,7 +114,7 @@ class MiniScan:
                         # ax.set_xlim(generator.signal_params["V0"]-75,
                         #             generator.signal_params["V1"]+75)                        
 
-                        ax.set_ylabel("DAC Signal (16-bit Signed Integer)")
+                        ax.set_ylabel("Signal")
 
                         
                         #tax = ax.twinx()
@@ -115,15 +122,18 @@ class MiniScan:
                         #tax.set_ylabel("DAC Signal (Volts.)")
 
                         #vmax = 1 ### horrible hard coded voltage max for main display
-                        #ax.set_ylim(0*vmax, 2*32767*vmax)
-                        #ax.set_ylim(-32767*vmax, 32767*vmax)
                         #tax.set_ylim(-vmax, vmax)
 
                         ### init plot
                         for itr, generator in enumerate(self.generators):
+                            server = getattr(generator, "server", getattr(generator, "kicker", None))
+                            label = getattr(server, "__name__", f"Generator {itr + 1}")
                             
-                            lines[str(itr)], = ax.plot(generator.t, generator.signal, label = generator.server.__name__)
-
+                            lines[str(itr)], = ax.plot(
+                                np.asarray(generator.t),
+                                np.asarray(generator.signal),
+                                label=label,
+                            )
                             clear_output(wait=True)
                             display(fig)
 
@@ -131,27 +141,25 @@ class MiniScan:
                         
                         ax.legend(loc = 'lower right')
                     
-                    lines[i].set_ydata(generator.signal)
+                    lines[i].set_data(np.asarray(generator.t), np.asarray(generator.signal))
+                    ax.relim()
+                    ax.autoscale(enable=True, axis="both")
+                    ax.autoscale_view()
                                         
                     clear_output(wait=True)
                     display(fig)
 
-                if i == len(self.generators)-1:    
-                    itr_start = datetime.now()
                 if write:
                     try:
                         generator.write()
                     except Exception as e:
                         print(e)
-                        break
+                        raise
             
-            itr_end = datetime.now()
-            itr_delta = (itr_end-itr_start).seconds
             # Sleep for the specified amount of time between each scan point
-            try:
-                time.sleep(self.wait_time-itr_delta-1) ## not sure why -1
-            except ValueError:
-                break
+            sleep_time = float(self.wait_time) - (time.time() - point_start)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
 
             t_update = datetime.now()
@@ -215,7 +223,13 @@ class MeshScan(MiniScan):
 
     def __init__(self, generators, scan_variables, scan_vectors, wait_time=0.1, **kwargs):
         scan_properties = {'scan_vectors': scan_vectors}
-        super().__init__(generators, scan_variables, scan_properties, wait_time, **kwargs)
+        super().__init__(
+            generators,
+            scan_variables,
+            scan_properties,
+            wait_time=wait_time,
+            **kwargs,
+        )
 
     def generate_scan_points(self):
         """

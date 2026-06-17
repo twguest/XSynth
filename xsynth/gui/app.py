@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import io
 import math
 import operator
 import threading
@@ -19,7 +21,8 @@ import dearpygui.dearpygui as dpg
 
 SIGNAL_TYPES: list[str] = []
 BEAM_REGIONS = ["ALL", "SA1", "SA2", "SA3", "SA4"]
-DEVICE_NAMES = ["ADAPTX", "ADAPT_MLS", "IBFB_X"]
+DEVICE_NAMES = ["ADAPTX", "ADAPT_MLS", "IBFB_X", "IBFB_Y"]
+SCAN_MODES = ["Raster scan", "Oscillator scan"]
 SLOT_1 = None
 SLOT_2 = None
 SCAN_THREAD = None
@@ -29,12 +32,21 @@ SCAN_CURRENT_INDEX = -1
 SCAN_COMPLETED_COUNT = 0
 
 
+class CapturedDeviceCallError(RuntimeError):
+    """Wrap a device exception together with text it printed."""
+
+    def __init__(self, original: Exception, output: str):
+        super().__init__(str(original))
+        self.original = original
+        self.output = output
+
+
 # -----------------------------------------------------------------------------
 # GUI options
 # -----------------------------------------------------------------------------
 
-DEFAULT_AUTOFIT_PLOT = False
 DEFAULT_CLAMP_V0_V1_TO_BEAM_REGION = False
+DEFAULT_FIT_PLOT_TO_TRACES = False
 DEFAULT_BEAM_REGION = "SA3"
 DEFAULT_OSCILLATOR = "line"
 
@@ -65,7 +77,7 @@ def initialise_slots() -> None:
 
     if SLOT_2 is None:
         SLOT_2 = AdaptSlot(
-            device_name="ADAPTY",
+            device_name="IBFB_Y",
             beam_region=DEFAULT_BEAM_REGION,
             oscillator_name=DEFAULT_OSCILLATOR,
         )
@@ -109,6 +121,30 @@ def log_exception(prefix: str) -> None:
     log_message(traceback.format_exc())
 
 
+def log_captured_output(prefix: str, output: str) -> bool:
+    """Log captured stdout/stderr from lower-level device calls."""
+
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return False
+
+    for line in lines:
+        log_message(f"{prefix}: {line}")
+    return True
+
+
+def capture_device_output(callable_) -> str:
+    """Run a device call and return anything it printed."""
+
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            callable_()
+    except Exception as exc:
+        raise CapturedDeviceCallError(exc, buffer.getvalue()) from exc
+    return buffer.getvalue()
+
+
 def _as_list(array_like) -> list:
     """Convert numpy/xarray/list-like data to a plain Python list."""
 
@@ -139,13 +175,17 @@ _ALLOWED_MATH_OPERATORS = {
     ast.UAdd: operator.pos,
 }
 
+_ALLOWED_MATH_CONSTANTS = {
+    "pi": math.pi,
+}
+
 
 def evaluate_math_input(value) -> float:
     """Evaluate a simple numeric expression from a GUI input field.
 
-    Supported operations are +, -, *, /, //, %, ** and parentheses.
-    Names, function calls, attributes, indexing and other Python syntax are
-    intentionally rejected.
+    Supported operations are +, -, *, /, //, %, ** and parentheses. The
+    constant pi is also accepted. Function calls, attributes, indexing and
+    other Python syntax are intentionally rejected.
     """
 
     if isinstance(value, (int, float)):
@@ -166,6 +206,11 @@ def evaluate_math_input(value) -> float:
 
         if isinstance(node, ast.Num):  # pragma: no cover, older Python AST compatibility
             return float(node.n)
+
+        if isinstance(node, ast.Name):
+            if node.id in _ALLOWED_MATH_CONSTANTS:
+                return _ALLOWED_MATH_CONSTANTS[node.id]
+            raise ValueError(f"name {node.id!r} is not allowed")
 
         if isinstance(node, ast.BinOp):
             op_type = type(node.op)
@@ -199,21 +244,8 @@ def _get_variable_step(name: str) -> float:
 
 
 # -----------------------------------------------------------------------------
-# Plot scaling / shading helpers
+# Plot scaling helpers
 # -----------------------------------------------------------------------------
-
-
-def _plot_autofit_enabled(slot_id: int) -> bool:
-    """Return whether a single slot plot should autoscale on signal updates.
-
-    This is deliberately per-slot. If it is disabled, manual pan/zoom/range
-    adjustments made directly on the Dear PyGui plot are preserved.
-    """
-
-    checkbox = tag(slot_id, "autofit_plot_checkbox")
-    if dpg.does_item_exist(checkbox):
-        return bool(dpg.get_value(checkbox))
-    return DEFAULT_AUTOFIT_PLOT
 
 
 def _clamp_v0_v1_enabled(slot_id: int) -> bool:
@@ -221,6 +253,19 @@ def _clamp_v0_v1_enabled(slot_id: int) -> bool:
     if dpg.does_item_exist(checkbox):
         return bool(dpg.get_value(checkbox))
     return DEFAULT_CLAMP_V0_V1_TO_BEAM_REGION
+
+
+def _fit_plot_to_traces_enabled(slot_id: int) -> bool:
+    checkbox = tag(slot_id, "fit_plot_checkbox")
+    if dpg.does_item_exist(checkbox):
+        return bool(dpg.get_value(checkbox))
+    return DEFAULT_FIT_PLOT_TO_TRACES
+
+
+def _fit_scan_plot_enabled() -> bool:
+    if dpg.does_item_exist("scan_fit_plot_checkbox"):
+        return bool(dpg.get_value("scan_fit_plot_checkbox"))
+    return DEFAULT_FIT_PLOT_TO_TRACES
 
 
 def _set_variable_widget_value(slot_id: int, name: str, value: float) -> None:
@@ -295,7 +340,7 @@ def _get_current_plot_y_span(slot_id: int) -> tuple[float, float]:
 
 
 def _get_current_plot_x_span(slot_id: int) -> tuple[float, float] | None:
-    """Return x-span from preview/readback traces only, not the shade series."""
+    """Return x-span from preview/readback traces."""
 
     x_values: list[float] = []
 
@@ -331,54 +376,6 @@ def _get_current_plot_x_span(slot_id: int) -> tuple[float, float] | None:
         pad = 0.02 * (x_max - x_min)
 
     return x_min - pad, x_max + pad
-
-
-def _fit_plot_axes_if_enabled(slot_id: int) -> None:
-    """Autoscale slot plot using only line series, ignoring beam-region shade."""
-
-    if not _plot_autofit_enabled(slot_id):
-        return
-
-    x_axis = tag(slot_id, "x_axis")
-    y_axis = tag(slot_id, "y_axis")
-
-    x_span = _get_current_plot_x_span(slot_id)
-    if x_span is not None:
-        dpg.set_axis_limits(x_axis, *x_span)
-    elif dpg.does_item_exist(x_axis):
-        dpg.fit_axis_data(x_axis)
-
-    y_min, y_max = _get_current_plot_y_span(slot_id)
-    dpg.set_axis_limits(y_axis, y_min, y_max)
-
-
-def update_beam_region_shading(slot_id: int) -> None:
-    """Shade the selected beam region without influencing autoscale."""
-
-    shade_tag = tag(slot_id, "beam_region_shade")
-    if not dpg.does_item_exist(shade_tag):
-        return
-
-    slot = get_slot(slot_id)
-
-    if slot is None or slot.generator is None:
-        dpg.set_value(shade_tag, [[], [], []])
-        return
-
-    try:
-        ti, tf = get_beam_region_bounds(slot_id)
-    except Exception:
-        dpg.set_value(shade_tag, [[], [], []])
-        return
-
-    dpg.set_value(
-        shade_tag,
-        [
-            [ti, tf],
-            [-float(1e30), -float(1e30)],
-            [float(1e30), float(1e30)],
-        ],
-    )
 
 
 # -----------------------------------------------------------------------------
@@ -429,42 +426,59 @@ def toggle_clamp_v0_v1(sender, app_data, user_data) -> None:
     if bool(app_data):
         clamp_v0_v1_to_beam_region(slot_id)
         update_preview_plot_only(slot_id)
-        update_beam_region_shading(slot_id)
         log_message(f"Slot {slot_id}: enabled V0/V1 beam-region clamp.")
     else:
         log_message(f"Slot {slot_id}: disabled V0/V1 beam-region clamp.")
 
 
-def toggle_autofit_plot(sender, app_data, user_data) -> None:
-    slot_id = int(user_data)
-    if bool(app_data):
-        _fit_plot_axes_if_enabled(slot_id)
-        log_message(f"Slot {slot_id}: enabled plot autofit.")
-    else:
-        log_message(f"Slot {slot_id}: disabled plot autofit; manual axis limits will be preserved.")
+def fit_slot_plot(slot_id: int, log: bool = False) -> None:
+    """Fit one plot to the current preview/readback traces."""
 
-
-def fit_slot_plot_callback(sender, app_data, user_data) -> None:
-    """Manually fit one plot once, without enabling automatic fitting."""
-
-    slot_id = int(user_data)
     x_axis = tag(slot_id, "x_axis")
     y_axis = tag(slot_id, "y_axis")
 
-    x_span = _get_current_plot_x_span(slot_id)
-    if x_span is not None and dpg.does_item_exist(x_axis):
-        dpg.set_axis_limits(x_axis, *x_span)
-
+    if dpg.does_item_exist(x_axis):
+        dpg.fit_axis_data(x_axis)
     if dpg.does_item_exist(y_axis):
-        y_min, y_max = _get_current_plot_y_span(slot_id)
-        dpg.set_axis_limits(y_axis, y_min, y_max)
+        dpg.fit_axis_data(y_axis)
 
-    log_message(f"Slot {slot_id}: fitted plot to preview/readback traces.")
+    if log:
+        log_message(f"Slot {slot_id}: fitted plot to preview/readback traces.")
+
+
+def fit_slot_plot_callback(sender, app_data, user_data) -> None:
+    fit_slot_plot(int(user_data), log=True)
+
+
+def release_slot_plot_axes(slot_id: int) -> None:
+    """Return plot axes to Dear PyGui's normal interactive handling."""
+
+    if not hasattr(dpg, "set_axis_limits_auto"):
+        return
+
+    for axis_tag in (tag(slot_id, "x_axis"), tag(slot_id, "y_axis")):
+        if dpg.does_item_exist(axis_tag):
+            dpg.set_axis_limits_auto(axis_tag)
+
+
+def fit_slot_plot_if_enabled(slot_id: int) -> None:
+    if _fit_plot_to_traces_enabled(slot_id):
+        fit_slot_plot(slot_id)
+
+
+def toggle_fit_slot_plot(sender, app_data, user_data) -> None:
+    slot_id = int(user_data)
+    if bool(app_data):
+        fit_slot_plot(slot_id, log=True)
+        log_message(f"Slot {slot_id}: plot fit enabled; disable it for manual scroll/drag.")
+    else:
+        release_slot_plot_axes(slot_id)
+        log_message(f"Slot {slot_id}: plot fit disabled; manual scroll/drag is preserved.")
 
 
 def fit_both_plots() -> None:
-    fit_slot_plot_callback(None, None, 1)
-    fit_slot_plot_callback(None, None, 2)
+    fit_slot_plot(1, log=True)
+    fit_slot_plot(2, log=True)
 
 
 def connect_slot(slot_id: int) -> None:
@@ -504,21 +518,18 @@ def set_slot_beam_region(sender, app_data, user_data) -> None:
     slot = get_slot(slot_id)
     slot.beam_region = app_data
 
-    server = getattr(slot, "server", None)
-    if server is not None and hasattr(server, "beam_region"):
-        try:
-            server.beam_region = app_data
-        except Exception:
-            pass
-
     try:
-        clamp_v0_v1_to_beam_region(slot_id)
-        rebuild_slot_variables(slot_id)
-        refresh_scan_target_dropdowns()
-        update_scan_preview()
-        update_preview_plot_only(slot_id)
-        update_beam_region_shading(slot_id)
-        log_message(f"Slot {slot_id}: beam region set to {app_data}")
+        if slot.server is not None:
+            slot.connect()
+            clamp_v0_v1_to_beam_region(slot_id)
+            rebuild_slot_variables(slot_id)
+            refresh_scan_target_dropdowns()
+            update_scan_preview()
+            update_preview_plot_only(slot_id)
+            update_plot_from_readback(slot_id)
+            log_message(f"Slot {slot_id}: reconnected with beam region {app_data}")
+        else:
+            log_message(f"Slot {slot_id}: beam region set to {app_data}; reconnect to apply.")
     except Exception:
         log_exception(f"Failed to update slot {slot_id} beam region.")
 
@@ -687,8 +698,7 @@ def update_preview_plot_only(slot_id: int) -> None:
             x = list(range(len(y_preview)))
 
         dpg.set_value(tag(slot_id, "preview_series"), [x, y_preview])
-        update_beam_region_shading(slot_id)
-        _fit_plot_axes_if_enabled(slot_id)
+        fit_slot_plot_if_enabled(slot_id)
 
     except Exception:
         log_exception(f"Failed to update slot {slot_id} generated preview plot.")
@@ -710,8 +720,7 @@ def update_plot_from_readback(slot_id: int) -> None:
             x = list(range(len(y_read)))
 
         dpg.set_value(tag(slot_id, "read_series"), [x, y_read])
-        update_beam_region_shading(slot_id)
-        _fit_plot_axes_if_enabled(slot_id)
+        fit_slot_plot_if_enabled(slot_id)
 
         log_message(f"Updated slot {slot_id} {slot.device_name} readback plot from server.read().")
 
@@ -730,9 +739,15 @@ def write_slot(slot_id: int) -> None:
 
     try:
         clamp_v0_v1_to_beam_region(slot_id)
-        slot.write()
-        log_message(f"Wrote slot {slot_id} signal to {slot.device_name}.")
+        output = capture_device_output(slot.write)
+        had_output = log_captured_output(f"Slot {slot_id} write", output)
+        if not had_output:
+            log_message(f"Wrote slot {slot_id} signal to {slot.device_name}.")
         update_plot_from_readback(slot_id)
+
+    except CapturedDeviceCallError as exc:
+        log_captured_output(f"Slot {slot_id} write", exc.output)
+        log_exception(f"Failed to write slot {slot_id} signal.")
 
     except Exception:
         log_exception(f"Failed to write slot {slot_id} signal.")
@@ -813,6 +828,12 @@ def refresh_scan_target_dropdowns() -> None:
     if not items:
         return
 
+    if dpg.does_item_exist("scan_map_target"):
+        current = dpg.get_value("scan_map_target")
+        dpg.configure_item("scan_map_target", items=items)
+        if current not in items:
+            dpg.set_value("scan_map_target", items[0])
+
     for line_id in range(MAX_SCAN_LINES):
         combo_tag = f"scan_line_{line_id}_target"
         if not dpg.does_item_exist(combo_tag):
@@ -822,6 +843,31 @@ def refresh_scan_target_dropdowns() -> None:
         dpg.configure_item(combo_tag, items=items)
         if current not in items:
             dpg.set_value(combo_tag, items[min(line_id, len(items) - 1)])
+
+
+def _get_scan_mode() -> str:
+    if dpg.does_item_exist("scan_mode"):
+        mode = dpg.get_value("scan_mode")
+        if mode in SCAN_MODES:
+            return mode
+    return SCAN_MODES[0]
+
+
+def _oscillator_scan_selected() -> bool:
+    return _get_scan_mode() == "Oscillator scan"
+
+
+def set_scan_mode(sender=None, app_data=None, user_data=None) -> None:
+    """Show the selected scan-configuration panel and refresh previews."""
+
+    mode = app_data if app_data in SCAN_MODES else _get_scan_mode()
+
+    if dpg.does_item_exist("raster_scan_panel"):
+        dpg.configure_item("raster_scan_panel", show=(mode == "Raster scan"))
+    if dpg.does_item_exist("oscillator_scan_panel"):
+        dpg.configure_item("oscillator_scan_panel", show=(mode == "Oscillator scan"))
+
+    update_scan_preview()
 
 
 def _get_scan_line(line_id: int) -> dict | None:
@@ -856,8 +902,133 @@ def _get_scan_line(line_id: int) -> dict | None:
     }
 
 
+def get_scan_map_oscillator_items() -> list[str]:
+    """Return oscillator names suitable for generating scan vectors."""
+
+    return [name for name in SIGNAL_TYPES if name != "custom"]
+
+
+def _get_scan_map_oscillator_info(oscillator_name: str) -> tuple[dict, dict]:
+    """Return variable descriptions and defaults for one oscillator."""
+
+    from xsynth.signal import SignalGenerator
+
+    generator = SignalGenerator(np.arange(0, 2))
+    registry = generator.__base__
+    if oscillator_name not in registry:
+        return {}, {}
+
+    oscillator = registry[oscillator_name]()
+    return oscillator.get_variable_mapping(), oscillator.get_default_values()
+
+
+def rebuild_scan_map_parameters(sender=None, app_data=None, user_data=None) -> None:
+    """Rebuild parameter inputs for the oscillator-map scan vector."""
+
+    group_tag = "scan_map_parameters"
+    if not dpg.does_item_exist(group_tag):
+        return
+
+    dpg.delete_item(group_tag, children_only=True)
+
+    oscillator_name = dpg.get_value("scan_map_oscillator") if dpg.does_item_exist("scan_map_oscillator") else DEFAULT_OSCILLATOR
+    variables, defaults = _get_scan_map_oscillator_info(oscillator_name)
+
+    editable_names = [name for name in variables if name not in {"V0", "V1"}]
+    if not editable_names:
+        dpg.add_text("No extra parameters.", parent=group_tag)
+        update_scan_preview()
+        return
+
+    with dpg.table(
+        parent=group_tag,
+        header_row=False,
+        borders_innerH=True,
+        borders_innerV=True,
+        borders_outerH=True,
+        borders_outerV=True,
+        policy=dpg.mvTable_SizingStretchProp,
+    ):
+        dpg.add_table_column(init_width_or_weight=1.0)
+        dpg.add_table_column(width_fixed=True, init_width_or_weight=92)
+
+        for name in editable_names:
+            default = defaults.get(name, 0.0)
+            default_text = f"{float(default):.6g}" if default is not None else "0"
+
+            with dpg.table_row():
+                dpg.add_text(f"{name}: {variables[name]}")
+                dpg.add_input_text(
+                    tag=f"scan_map_param_{name}",
+                    default_value=default_text,
+                    width=84,
+                    callback=update_scan_preview,
+                    on_enter=True,
+                )
+
+    update_scan_preview()
+
+
+def _get_scan_map_line() -> dict | None:
+    """Read the optional oscillator-to-variable scan map.
+
+    The oscillator is sampled from 0 seconds to the configured duration. Its
+    V0/V1 variables are intentionally bound to that generated time domain.
+    """
+
+    if not _oscillator_scan_selected():
+        return None
+
+    target = dpg.get_value("scan_map_target") if dpg.does_item_exist("scan_map_target") else ""
+    oscillator_name = dpg.get_value("scan_map_oscillator") if dpg.does_item_exist("scan_map_oscillator") else DEFAULT_OSCILLATOR
+    if not target or not oscillator_name:
+        return None
+
+    slot_id, variable_name = parse_scan_target(target)
+    duration = evaluate_math_input(dpg.get_value("scan_map_duration"))
+    duration = max(0.0, float(duration))
+    points = int(max(1, round(evaluate_math_input(dpg.get_value("scan_map_points")))))
+    dwell = duration / points
+    t = np.linspace(0.0, duration, points, dtype=float)
+
+    variables, defaults = _get_scan_map_oscillator_info(oscillator_name)
+    params = dict(defaults)
+    params["V0"] = 0.0
+    params["V1"] = duration
+
+    for name in variables:
+        if name in {"V0", "V1"}:
+            continue
+        input_tag = f"scan_map_param_{name}"
+        if dpg.does_item_exist(input_tag):
+            params[name] = evaluate_math_input(dpg.get_value(input_tag))
+
+    from xsynth.signal import SignalGenerator
+
+    generator = SignalGenerator(t, oscillator=oscillator_name, **params)
+    vector = np.asarray(generator.signal, dtype=float).reshape(-1)
+
+    return {
+        "slot_id": slot_id,
+        "variable_name": variable_name,
+        "target": target,
+        "start": float(vector[0]) if len(vector) else 0.0,
+        "stop": float(vector[-1]) if len(vector) else 0.0,
+        "points": len(vector),
+        "vector": vector,
+        "source": f"oscillator:{oscillator_name}",
+        "time": t,
+        "dwell": dwell,
+    }
+
+
 def get_scan_configuration() -> tuple[list[dict], float, np.ndarray]:
     """Build a MiniScan-style mesh from the enabled scan lines."""
+
+    map_line = _get_scan_map_line()
+    if map_line is not None:
+        vector = np.asarray(map_line["vector"], dtype=float)
+        return [map_line], float(map_line["dwell"]), vector.reshape(-1, 1)
 
     dwell = evaluate_math_input(dpg.get_value("scan_dwell_time")) if dpg.does_item_exist("scan_dwell_time") else 0.1
     dwell = max(0.0, float(dwell))
@@ -912,10 +1083,12 @@ def _get_scan_plot_xy(lines: list[dict], scan_points: np.ndarray) -> tuple[list[
         return [], []
 
     if len(lines) == 1:
-        x = list(range(n_points))
+        x = _as_list(lines[0].get("time")) if "time" in lines[0] else list(range(n_points))
+        if len(x) != n_points:
+            x = list(range(n_points))
         y = scan_points[:, 0].astype(float).tolist()
         if dpg.does_item_exist("scan_x_axis"):
-            dpg.configure_item("scan_x_axis", label="scan index")
+            dpg.configure_item("scan_x_axis", label="time / s" if "time" in lines[0] else "scan index")
         if dpg.does_item_exist("scan_y_axis"):
             dpg.configure_item("scan_y_axis", label=lines[0]["target"])
         return x, y
@@ -929,7 +1102,41 @@ def _get_scan_plot_xy(lines: list[dict], scan_points: np.ndarray) -> tuple[list[
     return x, y
 
 
-def update_scan_point_plot(completed_count: int = 0, current_index: int = -1, fit_axes: bool = False) -> None:
+def fit_scan_plot_callback(sender=None, app_data=None, user_data=None) -> None:
+    """Fit the shared scan plot to its current series."""
+
+    if dpg.does_item_exist("scan_x_axis"):
+        dpg.fit_axis_data("scan_x_axis")
+    if dpg.does_item_exist("scan_y_axis"):
+        dpg.fit_axis_data("scan_y_axis")
+
+
+def release_scan_plot_axes() -> None:
+    """Return the shared scan plot axes to normal interactive handling."""
+
+    if not hasattr(dpg, "set_axis_limits_auto"):
+        return
+
+    for axis_tag in ("scan_x_axis", "scan_y_axis"):
+        if dpg.does_item_exist(axis_tag):
+            dpg.set_axis_limits_auto(axis_tag)
+
+
+def fit_scan_plot_if_enabled() -> None:
+    if _fit_scan_plot_enabled():
+        fit_scan_plot_callback()
+
+
+def toggle_fit_scan_plot(sender, app_data, user_data) -> None:
+    if bool(app_data):
+        fit_scan_plot_callback()
+        log_message("Scan plot fit enabled; disable it for manual scroll/drag.")
+    else:
+        release_scan_plot_axes()
+        log_message("Scan plot fit disabled; manual scroll/drag is preserved.")
+
+
+def update_scan_point_plot(completed_count: int = 0, current_index: int = -1) -> None:
     """Update scan-point plot with completed/current/upcoming marker groups."""
 
     try:
@@ -962,11 +1169,7 @@ def update_scan_point_plot(completed_count: int = 0, current_index: int = -1, fi
         if dpg.does_item_exist("scan_points_upcoming_series"):
             dpg.set_value("scan_points_upcoming_series", [upcoming_x, upcoming_y])
 
-        if fit_axes:
-            if dpg.does_item_exist("scan_x_axis"):
-                dpg.fit_axis_data("scan_x_axis")
-            if dpg.does_item_exist("scan_y_axis"):
-                dpg.fit_axis_data("scan_y_axis")
+        fit_scan_plot_if_enabled()
 
     except Exception:
         log_exception("Failed to update scan-point plot.")
@@ -978,14 +1181,17 @@ def update_scan_preview(sender=None, app_data=None, user_data=None) -> None:
         lines, dwell, scan_points = get_scan_configuration()
         n_points = len(scan_points)
         total_duration = n_points * dwell
+        map_line = next((line for line in lines if str(line.get("source", "")).startswith("oscillator:")), None)
 
         if dpg.does_item_exist("scan_duration_text"):
+            mode = "oscillator" if map_line is not None else "raster"
+            dwell_label = "interval" if map_line is not None else "dwell"
             dpg.set_value(
                 "scan_duration_text",
-                f"Scan points: {n_points} | dwell: {dwell:g} s | estimated duration: {_format_seconds(total_duration)}",
+                f"{mode} | {n_points} pts | {dwell_label} {dwell:g} s | total {_format_seconds(total_duration)}",
             )
 
-        update_scan_point_plot(completed_count=0, current_index=-1, fit_axes=True)
+        update_scan_point_plot(completed_count=0, current_index=-1)
 
     except Exception:
         log_exception("Failed to update scan preview.")
@@ -1038,7 +1244,23 @@ def write_both_slots_for_scan() -> None:
         if slot.generator is None or slot.server is None:
             continue
         clamp_v0_v1_to_beam_region(slot_id)
-        slot.write()
+        try:
+            output = capture_device_output(slot.write)
+            log_captured_output(f"Slot {slot_id} scan write", output)
+        except CapturedDeviceCallError as exc:
+            log_captured_output(f"Slot {slot_id} scan write", exc.output)
+            raise exc.original
+
+
+def _sleep_scan_dwell(seconds: float) -> None:
+    """Sleep in short chunks so a safe stop request is noticed promptly."""
+
+    end_time = time.time() + max(0.0, float(seconds))
+    while not SCAN_CANCEL_REQUESTED:
+        remaining = end_time - time.time()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.05, remaining))
 
 
 def _execute_scan_worker(lines: list[dict], dwell: float, scan_points: np.ndarray, write_each_point: bool) -> None:
@@ -1052,8 +1274,8 @@ def _execute_scan_worker(lines: list[dict], dwell: float, scan_points: np.ndarra
     try:
         for point_index, point in enumerate(scan_points):
             if SCAN_CANCEL_REQUESTED:
-                _set_scan_status(point_index / max(n_points, 1), "Scan cancelled.")
-                log_message("Scan cancelled.")
+                _set_scan_status(point_index / max(n_points, 1), "Scan stopped before next point.")
+                log_message("Scan stopped before next point.")
                 return
 
             point_start = time.time()
@@ -1078,10 +1300,18 @@ def _execute_scan_worker(lines: list[dict], dwell: float, scan_points: np.ndarra
 
             sleep_time = dwell - (time.time() - point_start)
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                _sleep_scan_dwell(sleep_time)
 
             SCAN_COMPLETED_COUNT = point_index + 1
             update_scan_point_plot(completed_count=SCAN_COMPLETED_COUNT, current_index=-1)
+
+            if SCAN_CANCEL_REQUESTED:
+                _set_scan_status(
+                    SCAN_COMPLETED_COUNT / max(n_points, 1),
+                    f"Scan stopped safely after point {SCAN_COMPLETED_COUNT}/{n_points}.",
+                )
+                log_message(f"Scan stopped safely after point {SCAN_COMPLETED_COUNT}/{n_points}.")
+                return
 
         SCAN_CURRENT_INDEX = -1
         SCAN_COMPLETED_COUNT = n_points
@@ -1117,8 +1347,8 @@ def start_scan(sender=None, app_data=None, user_data=None) -> None:
         SCAN_CANCEL_REQUESTED = False
         SCAN_CURRENT_INDEX = -1
         SCAN_COMPLETED_COUNT = 0
-        update_scan_point_plot(completed_count=0, current_index=-1, fit_axes=True)
-        _set_scan_status(0.0, "Starting scan...")
+        update_scan_point_plot(completed_count=0, current_index=-1)
+        _set_scan_status(0.0, "Starting selected scan...")
 
         SCAN_THREAD = threading.Thread(
             target=_execute_scan_worker,
@@ -1136,19 +1366,30 @@ def start_scan(sender=None, app_data=None, user_data=None) -> None:
         log_exception("Failed to start scan.")
 
 
-def cancel_scan(sender=None, app_data=None, user_data=None) -> None:
-    """Request cancellation of the active scan."""
+def request_stop_scan(sender=None, app_data=None, user_data=None) -> None:
+    """Request a safe stop after the current scan point completes."""
 
     global SCAN_CANCEL_REQUESTED
+    if SCAN_THREAD is None or not SCAN_THREAD.is_alive():
+        _set_scan_status(
+            dpg.get_value("scan_progress_bar") if dpg.does_item_exist("scan_progress_bar") else 0.0,
+            "No scan is running.",
+        )
+        log_message("No scan is running.")
+        return
+
     SCAN_CANCEL_REQUESTED = True
-    _set_scan_status(dpg.get_value("scan_progress_bar") if dpg.does_item_exist("scan_progress_bar") else 0.0, "Cancelling scan...")
+    _set_scan_status(
+        dpg.get_value("scan_progress_bar") if dpg.does_item_exist("scan_progress_bar") else 0.0,
+        "Stop requested; finishing the current point.",
+    )
+    log_message("Stop requested; scan will stop safely after the current point.")
 
 
-def make_scan_panel() -> None:
-    """Create the RHS MiniScan-style scan panel."""
+def make_raster_scan_panel(items: list[str]) -> None:
+    """Create raster/mesh scan configuration controls."""
 
-    dpg.add_text("MiniScan")
-    dpg.add_text("Enable one line for a 1D scan; enable two or more for a mesh scan.", wrap=320)
+    dpg.add_text("Enable one raster line for a 1D scan; enable two for a mesh scan.", wrap=320)
 
     with dpg.group(horizontal=True):
         dpg.add_input_text(
@@ -1158,11 +1399,6 @@ def make_scan_panel() -> None:
             width=90,
             callback=update_scan_preview,
             on_enter=True,
-        )
-        dpg.add_checkbox(
-            tag="scan_write_each_point",
-            label="Write both at each point",
-            default_value=False,
         )
 
     dpg.add_separator()
@@ -1205,17 +1441,123 @@ def make_scan_panel() -> None:
             )
 
     dpg.add_text("Columns: enable | target | start | stop | points", wrap=320)
+
+
+def make_oscillator_scan_panel(items: list[str]) -> None:
+    """Create oscillator-to-variable scan configuration controls."""
+
+    map_oscillators = get_scan_map_oscillator_items()
+    default_map_oscillator = DEFAULT_OSCILLATOR if DEFAULT_OSCILLATOR in map_oscillators else (map_oscillators[0] if map_oscillators else "")
+
+    with dpg.table(
+        header_row=False,
+        borders_innerH=True,
+        borders_innerV=True,
+        policy=dpg.mvTable_SizingStretchProp,
+        width=-1,
+    ):
+        dpg.add_table_column(width_fixed=True, init_width_or_weight=78)
+        dpg.add_table_column(init_width_or_weight=1.0)
+
+        with dpg.table_row():
+            dpg.add_text("Target")
+            dpg.add_combo(
+                items,
+                tag="scan_map_target",
+                default_value=items[0] if items else "",
+                width=-1,
+                callback=update_scan_preview,
+            )
+
+        with dpg.table_row():
+            dpg.add_text("Oscillator")
+            dpg.add_combo(
+                map_oscillators,
+                tag="scan_map_oscillator",
+                default_value=default_map_oscillator,
+                width=-1,
+                callback=rebuild_scan_map_parameters,
+            )
+
+        with dpg.table_row():
+            dpg.add_text("Duration / s")
+            dpg.add_input_text(
+                tag="scan_map_duration",
+                default_value="10",
+                width=-1,
+                callback=update_scan_preview,
+                on_enter=True,
+            )
+
+        with dpg.table_row():
+            dpg.add_text("Points")
+            dpg.add_input_text(
+                tag="scan_map_points",
+                default_value="51",
+                width=-1,
+                callback=update_scan_preview,
+                on_enter=True,
+            )
+
+    dpg.add_group(tag="scan_map_parameters")
+
+
+def make_scan_panel() -> None:
+    """Create the RHS MiniScan-style scan panel."""
+
+    dpg.add_text("MiniScan")
+
+    items = get_scan_target_items()
+
+    with dpg.table(
+        header_row=False,
+        borders_innerV=True,
+        policy=dpg.mvTable_SizingStretchProp,
+        width=-1,
+    ):
+        dpg.add_table_column(width_fixed=True, init_width_or_weight=78)
+        dpg.add_table_column(init_width_or_weight=1.0)
+        with dpg.table_row():
+            dpg.add_text("Mode")
+            dpg.add_combo(
+                SCAN_MODES,
+                tag="scan_mode",
+                default_value=SCAN_MODES[0],
+                width=-1,
+                callback=set_scan_mode,
+            )
+
+    with dpg.child_window(label="Raster scan", tag="raster_scan_panel", height=230, width=-1, border=True):
+        make_raster_scan_panel(items)
+
+    with dpg.child_window(label="Oscillator scan", tag="oscillator_scan_panel", height=250, width=-1, border=True, show=False):
+        make_oscillator_scan_panel(items)
+
+    rebuild_scan_map_parameters()
+
+    dpg.add_separator()
     dpg.add_text("", tag="scan_duration_text", wrap=340)
 
     with dpg.group(horizontal=True):
-        dpg.add_button(label="Update points", callback=update_scan_preview)
-        dpg.add_button(label="Start scan", callback=start_scan)
-        dpg.add_button(label="Cancel", callback=cancel_scan)
+        dpg.add_checkbox(
+            tag="scan_write_each_point",
+            label="Write each point",
+            default_value=False,
+        )
+        dpg.add_button(label="Update", width=62, callback=update_scan_preview)
+        dpg.add_button(label="Start scan", width=86, callback=start_scan)
+        dpg.add_button(label="Stop safely", width=86, callback=request_stop_scan)
 
     dpg.add_progress_bar(tag="scan_progress_bar", default_value=0.0, width=-1, overlay="0.0%")
     dpg.add_text("Idle.", tag="scan_status_text", wrap=340)
 
     make_scan_point_themes()
+    dpg.add_checkbox(
+        label="Fit plot",
+        tag="scan_fit_plot_checkbox",
+        default_value=DEFAULT_FIT_PLOT_TO_TRACES,
+        callback=toggle_fit_scan_plot,
+    )
     with dpg.plot(label="Scan points", height=330, width=-1):
         dpg.add_plot_legend()
         dpg.add_plot_axis(dpg.mvXAxis, label="scan index", tag="scan_x_axis")
@@ -1300,15 +1642,10 @@ def make_plot_panel(slot_id: int) -> None:
 
     with dpg.group(horizontal=True):
         dpg.add_checkbox(
-            label="Autofit this plot",
-            tag=tag(slot_id, "autofit_plot_checkbox"),
-            default_value=DEFAULT_AUTOFIT_PLOT,
-            callback=toggle_autofit_plot,
-            user_data=slot_id,
-        )
-        dpg.add_button(
-            label="Fit once",
-            callback=fit_slot_plot_callback,
+            label="Fit plot",
+            tag=tag(slot_id, "fit_plot_checkbox"),
+            default_value=DEFAULT_FIT_PLOT_TO_TRACES,
+            callback=toggle_fit_slot_plot,
             user_data=slot_id,
         )
 
@@ -1326,24 +1663,6 @@ def make_plot_panel(slot_id: int) -> None:
             label="signal",
             tag=tag(slot_id, "y_axis"),
         )
-
-        # Draw the selected beam region first so preview/readback traces sit on top.
-        if hasattr(dpg, "add_shade_series"):
-            dpg.add_shade_series(
-                [],
-                [],
-                y2=[],
-                label="Selected beam region",
-                parent=tag(slot_id, "y_axis"),
-                tag=tag(slot_id, "beam_region_shade"),
-            )
-        elif hasattr(dpg, "add_inf_line_series"):
-            dpg.add_inf_line_series(
-                [],
-                label="Beam-region start/end",
-                parent=tag(slot_id, "x_axis"),
-                tag=tag(slot_id, "beam_region_lines"),
-            )
 
         dpg.add_line_series(
             [],
@@ -1492,9 +1811,9 @@ def main() -> None:
 
     log_message("XSynth GUI started.")
     log_message("Connect each server to load its current readback.")
-    log_message("Input boxes accept direct numeric math, e.g. 1e-3/2 or (10+5)*2.")
-    log_message("Autofit is per plot and off by default, so manual pan/zoom is preserved.")
-    log_message("MiniScan panel is available on the far right; enable one or two scan variables and press Update points.")
+    log_message("Input boxes accept numeric math, e.g. pi/2, 1e-3/2 or (10+5)*2.")
+    log_message("Disable a plot's Fit plot toggle when you want manual scroll/drag.")
+    log_message("MiniScan is on the far right; choose Raster scan or Oscillator scan from the Mode dropdown.")
 
     dpg.start_dearpygui()
     dpg.destroy_context()

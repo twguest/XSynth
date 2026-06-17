@@ -90,7 +90,8 @@ class SinSignal(BaseSignal):
         """
         Generates a sinusoidal signal within the specified domain.
         """
-        signal_values = V3 * np.sin(2 * np.pi * V4 * -(V0-t)-V5*t) + V2
+        phase = np.mod(V5, 2 * np.pi)
+        signal_values = V3 * np.sin(2 * np.pi * V4 * (t - V0) + phase) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):
@@ -109,7 +110,8 @@ class CosSignal(BaseSignal):
         """
         Generates a cosine signal within the specified domain.
         """
-        signal_values = V3 * np.cos(2 * np.pi * V4 * -(V0-t)-V5*t) + V2
+        phase = np.mod(V5, 2 * np.pi)
+        signal_values = V3 * np.cos(2 * np.pi * V4 * (t - V0) + phase) + V2
         return np.where((t >= V0) & (t <= V1), signal_values, V2)
 
     def get_latex_expression(self):

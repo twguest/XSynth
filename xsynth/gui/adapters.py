@@ -39,6 +39,8 @@ class AdaptSlot:
         else:
             raise ValueError(f"Unsupported ADAPT device: {self.device_name}")
 
+        ### may be some differences w/ IBFB at some point.
+        # For now we just use the same signal generator interface for all.
         self.generator = ADAPTSignalGenerator(
             adaptation_server=self.server,
             oscillator=self.oscillator_name,

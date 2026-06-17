@@ -293,21 +293,26 @@ class ADAPTSignalGenerator(SignalGenerator):
         Writes the generated signal to the DAC device via the kicker.
     """
 
-    def __init__(self, adaptation_server, oscillator = None, **kwargs):
+    def __init__(self, adaptation_server, fix_beam_region = True, oscillator = None, **kwargs):
         """
-        Initialize the DACSignalGenerator class, inheriting from SignalGenerator, for generating DAC signals.
+        Initialize the ADAPTSignalGenerator from an already configured server.
         
         Parameters:
         ----------
         adaptation_server (xsynth): 
-            Instance of a device class to write the generated signals. The kicker provides time interval and signal duration.
-        beam_region (str, optional): 
-            Specification of SASE beamline. Allowed values are: ["SA2", "ALL"].
+            Instance of a device class to write the generated signals. The
+            server owns the beam_region and provides pulse IDs.
         oscillator (str, optional): 
             Type of signal to generate. Must be one of the supported signal types defined in the SignalGenerator.
         kwargs: 
             Additional arguments for each signal type, e.g., amplitude or frequency.
         """
+        if "beam_region" in kwargs:
+            raise TypeError(
+                "ADAPTSignalGenerator does not accept beam_region. "
+                "Configure beam_region on the adaptation server/device instead."
+            )
+
         beam_regions = ["ALL", "SA1", "SA2", "SA3", "SA4"]
         assert type(adaptation_server) != type, "Instantiate the kicker device (e.g., KickerDevice() ) before passing to DACSignalGenerator"
         self.server = adaptation_server
@@ -317,8 +322,9 @@ class ADAPTSignalGenerator(SignalGenerator):
 
         # t = np.arange(len(self.server.pulseId)) ### SAVE FOR VARIABLE CHARGE SERVER
         # Current implementation makes the assumption of contiguous beam_region SASE13
-        kwargs["V0"] = self.server.pulseId.min()
-        kwargs["V1"] = self.server.pulseId.max()
+        if fix_beam_region:
+            kwargs["V0"] = self.server.pulseId.min()
+            kwargs["V1"] = self.server.pulseId.max()
 
         super().__init__(t = np.arange(self.server.pulseId.min(), self.server.pulseId.max()),
                          unit='bunches', oscillator = oscillator, **kwargs)
