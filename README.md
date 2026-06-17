@@ -1,5 +1,4 @@
-# xsynth — Examples & Demo
-
+# XSynth
 This repository contains the `xsynth` package and example notebooks demonstrating how to create devices, signals, and scans.
 
 Getting started
