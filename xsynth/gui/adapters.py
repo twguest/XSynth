@@ -6,7 +6,7 @@ from typing import Dict, Type
 import numpy as np
 
 from xsynth.signal import SignalGenerator, ADAPTSignalGenerator
-from xsynth.device import ADAPTX, ADAPT_MLS
+from xsynth.device import ADAPTX, ADAPT_MLS, IBFB_X, IBFB_Y
 
 
 def get_oscillator_registry() -> Dict[str, Type]:
@@ -32,6 +32,10 @@ class AdaptSlot:
             self.server = ADAPTX(beam_region=self.beam_region)
         elif self.device_name == 'ADAPT_MLS':
             self.server = ADAPT_MLS(beam_region=self.beam_region)
+        elif self.device_name == 'IBFB_X': 
+            self.server = IBFB_X(beam_region=self.beam_region)
+        elif self.device_name == 'IBFB_Y': 
+            self.server = IBFB_Y(beam_region=self.beam_region)
         else:
             raise ValueError(f"Unsupported ADAPT device: {self.device_name}")
 

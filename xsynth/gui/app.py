@@ -19,7 +19,7 @@ import dearpygui.dearpygui as dpg
 
 SIGNAL_TYPES: list[str] = []
 BEAM_REGIONS = ["ALL", "SA1", "SA2", "SA3", "SA4"]
-DEVICE_NAMES = ["ADAPTX", "ADAPT_MLS"]
+DEVICE_NAMES = ["ADAPTX", "ADAPT_MLS", "IBFB_X"]
 SLOT_1 = None
 SLOT_2 = None
 SCAN_THREAD = None
@@ -107,26 +107,6 @@ def log_exception(prefix: str) -> None:
 
     log_message(prefix)
     log_message(traceback.format_exc())
-
-
-def _exception_summary(exc: Exception) -> str:
-    """Return a compact one-line exception description for status widgets."""
-
-    message = str(exc)
-    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
-
-
-def set_slot_status(slot_id: int, message: str, is_error: bool = False) -> None:
-    """Update the visible status line for one server slot."""
-
-    status_tag = tag(slot_id, "status_text")
-    prefix = "Error" if is_error else "Status"
-    text = f"{prefix}: {message}"
-
-    if dpg.does_item_exist(status_tag):
-        dpg.set_value(status_tag, text)
-    else:
-        log_message(f"Slot {slot_id} {text}")
 
 
 def _as_list(array_like) -> list:
@@ -507,16 +487,11 @@ def connect_slot(slot_id: int) -> None:
             f"Connected slot {slot_id}: {slot.device_name}, "
             f"{slot.beam_region}, oscillator={slot.oscillator_name}"
         )
-        set_slot_status(
-            slot_id,
-            f"Connected to {slot.device_name} {slot.beam_region}.",
-        )
 
         update_preview_plot_only(slot_id)
         update_plot_from_readback(slot_id)
 
-    except Exception as exc:
-        set_slot_status(slot_id, f"Connect failed: {_exception_summary(exc)}", is_error=True)
+    except Exception:
         log_exception(f"Failed to connect slot {slot_id}.")
 
 
@@ -543,10 +518,8 @@ def set_slot_beam_region(sender, app_data, user_data) -> None:
         update_scan_preview()
         update_preview_plot_only(slot_id)
         update_beam_region_shading(slot_id)
-        set_slot_status(slot_id, f"Beam region set to {app_data}.")
         log_message(f"Slot {slot_id}: beam region set to {app_data}")
-    except Exception as exc:
-        set_slot_status(slot_id, f"Beam-region update failed: {_exception_summary(exc)}", is_error=True)
+    except Exception:
         log_exception(f"Failed to update slot {slot_id} beam region.")
 
 
@@ -740,11 +713,9 @@ def update_plot_from_readback(slot_id: int) -> None:
         update_beam_region_shading(slot_id)
         _fit_plot_axes_if_enabled(slot_id)
 
-        set_slot_status(slot_id, f"Readback updated from {slot.device_name}.")
         log_message(f"Updated slot {slot_id} {slot.device_name} readback plot from server.read().")
 
-    except Exception as exc:
-        set_slot_status(slot_id, f"Readback failed: {_exception_summary(exc)}", is_error=True)
+    except Exception:
         log_exception(f"Failed to read or plot slot {slot_id} readback.")
 
 
@@ -760,12 +731,10 @@ def write_slot(slot_id: int) -> None:
     try:
         clamp_v0_v1_to_beam_region(slot_id)
         slot.write()
-        set_slot_status(slot_id, f"Wrote signal to {slot.device_name}.")
         log_message(f"Wrote slot {slot_id} signal to {slot.device_name}.")
         update_plot_from_readback(slot_id)
 
-    except Exception as exc:
-        set_slot_status(slot_id, f"Write failed: {_exception_summary(exc)}", is_error=True)
+    except Exception:
         log_exception(f"Failed to write slot {slot_id} signal.")
 
 
@@ -1069,12 +1038,7 @@ def write_both_slots_for_scan() -> None:
         if slot.generator is None or slot.server is None:
             continue
         clamp_v0_v1_to_beam_region(slot_id)
-        try:
-            slot.write()
-            set_slot_status(slot_id, f"Wrote scan point to {slot.device_name}.")
-        except Exception as exc:
-            set_slot_status(slot_id, f"Scan write failed: {_exception_summary(exc)}", is_error=True)
-            raise
+        slot.write()
 
 
 def _execute_scan_worker(lines: list[dict], dwell: float, scan_points: np.ndarray, write_each_point: bool) -> None:
@@ -1318,12 +1282,6 @@ def make_server_controls(slot_id: int) -> None:
             default_value=DEFAULT_CLAMP_V0_V1_TO_BEAM_REGION,
             callback=toggle_clamp_v0_v1,
             user_data=slot_id,
-        )
-
-        dpg.add_text(
-            "Status: Not connected.",
-            tag=tag(slot_id, "status_text"),
-            wrap=260,
         )
 
 

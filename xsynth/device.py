@@ -134,7 +134,7 @@ class KNY1965(KickerDevice):
         return "KNY1965"
     
 
-#### ESSENTIALLY THE MIDDLE LAYER SERVER 
+#### ADAPTATION SERVER AND MIDDLE LAYER
 #----------------------------------------
 
 
@@ -244,8 +244,94 @@ class ADAPTIONMIDDLELAYER(KickerDevice):
             print(f"Failed to write to Adaptation MLS: {e}")
             raise
 
+
+#### ADAPTATION SERVER AND MIDDLE LAYER
+#----------------------------------------
+
+
+class IBFB_Server(KickerDevice):
+    """
+    T-IBFB Server 
+
+
+    ### Need to check timing of shadow tables
+    """
+    def __init__(self, device_location, beam_region):
+        """
+        Initialize the xsynth class with the given device path.
         
+        Parameters:
+        device_location (str): The full path of the kicker device to control, including channel.
+        """
+        self.device_type = "IBFB"
+        self.device_location = device_location
+
+        self.beam_region = beam_region
+        assert self.beam_region in ["ALL", "SA1", "SA2", "SA3", "SA4"]
+      
+        self.initial_signal = pydoocs.read(self.device_location)['data'][:,1]
+
+    @property
+    def __name__(self):
+        return "T-IBFB Server"
+
+### ONLY TRUE IF T-IBFB has same time structure as ADAPTATION SERVER, which may not be the case. TO-DO CHECK THIS
+    @property
+    def pulseId(self):
+        return pydoocs.read(f"XFEL.FEEDBACK/KICKERDC_BETA/CONTROL/BPM.PULSES.{self.beam_region}.INDX")['data']
     
+    def read(self):
+        return pydoocs.read(self.device_location)['data'][:,1]
+
+    
+    ### TO-DO: 
+    def write(self, signal, pulseId):
+        """
+        Write values
+        
+        Parameters:
+        signal (numpy.ndarray): The signal values to the ramp location
+        relative (Bool): Scan relative to the intial signal
+        """
+        init_signal = self.read()
+        init_signal[pulseId] = signal
+
+        try:
+            pydoocs.write(self.device_location, init_signal)
+            pydoocs.write(self.apply_location, 1)
+            #print("Succesful Write")
+        except Exception as e:
+            print(f"Failed to write to T-IBFB Server: {e}")
+
+
+class IBFB_X(IBFB_Server):
+
+    def __init__(self, beam_region):
+        
+        super().__init__(device_location="XFEL.DIAG/DAMC2IBFB/DI1914TL.0_CTRL/SHADOW_TABLE_X_1",
+                         beam_region = beam_region)
+        
+        self.apply_location = "XFEL.DIAG/DAMC2IBFB/DI1914TL.0_CTRL/FF_COMMAND_X"
+
+    @property
+    def __name__(self):
+        return "IBFB_X"
+    
+
+class IBFB_Y(IBFB_Server):
+
+    def __init__(self, beam_region):
+        
+        super().__init__(device_location="XFEL.DIAG/DAMC2IBFB/DI1914TL.0_CTRL/SHADOW_TABLE_Y_1",
+                         beam_region = beam_region)
+        
+        self.apply_location = "XFEL.DIAG/DAMC2IBFB/DI1914TL.0_CTRL/FF_COMMAND_Y"
+
+    @property
+    def __name__(self):
+        return "IBFB_Y"
+    
+
 class ADAPTX(ADAPTSERVER):
 
     def __init__(self, beam_region):
