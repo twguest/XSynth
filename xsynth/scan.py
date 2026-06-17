@@ -170,6 +170,12 @@ class MiniScan:
         if self.plot_display:
             clear_output(wait=True)
 
+    def plot_summary(self, *args, **kwargs):
+        """Plot a compact summary of the completed scan output."""
+        from xsynth.plot import plot_scan_summary
+
+        return plot_scan_summary(self, *args, **kwargs)
+
     @property
     def scan_points(self):
         return self.generate_scan_points()

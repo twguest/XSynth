@@ -263,8 +263,9 @@ class DACSignalGenerator(SignalGenerator):
         try:
             self.kicker.write_dac(signal_data.values, self.relative_scan)
         except Exception as e:
-            print("Could not write to device")
-            print(e)
+            pass
+            #print("Could not write to device")
+            #print(e)
 
 class ADAPTSignalGenerator(SignalGenerator):
     """
@@ -364,5 +365,5 @@ class ADAPTSignalGenerator(SignalGenerator):
         try:
             self.server.write(self.signal, self.t)
         except Exception as e:
-            print("Could not write to device")
-            print(e)
+            print("Skipping Write")
+            #print(e)
