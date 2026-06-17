@@ -1044,7 +1044,24 @@ def get_scan_configuration() -> tuple[list[dict], float, np.ndarray]:
 
     scan_vectors = [line["vector"] for line in lines]
     mesh = np.meshgrid(*scan_vectors, indexing="ij")
-    scan_points = np.vstack([m.ravel() for m in mesh]).T
+
+    if len(mesh) == 2:
+        # Use snake ordering for 2D raster scans: alternate row direction on the
+        # second axis so the scan travels back and forth instead of returning to
+        # the first column after each row.
+        x, y = mesh
+        points: list[np.ndarray] = []
+        for row_idx in range(x.shape[0]):
+            row_x = x[row_idx]
+            row_y = y[row_idx]
+            if row_idx % 2 == 1:
+                row_x = row_x[::-1]
+                row_y = row_y[::-1]
+            points.append(np.vstack([row_x, row_y]).T)
+        scan_points = np.vstack(points)
+    else:
+        scan_points = np.vstack([m.ravel() for m in mesh]).T
+
     return lines, dwell, scan_points
 
 
